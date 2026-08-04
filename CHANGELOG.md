@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- changelog -->
 
+## [v1.19.0](https://github.com/agentjido/req_llm/compare/v1.18.0...v1.19.0) (2026-08-04)
+
+
+
+
+### Features:
+
+* google_vertex: support multi-region (us/eu) endpoints (#948) by matija-workera
+
+* openrouter: forward Google safety settings to Gemini models (#947) by Gilles Dubuc
+
+### Bug Fixes:
+
+* minimax: preserve normalized streaming reasoning details (#943) by Oliver Grüttner
+
+* google: stop reporting non-streaming aborts as a clean stop (#945) by Gilles Dubuc
+
+* remove deleted roadmap references by mikehostetler
+
 ## [v1.18.0](https://github.com/agentjido/req_llm/compare/v1.17.1...v1.18.0) (2026-07-31)
 
 
