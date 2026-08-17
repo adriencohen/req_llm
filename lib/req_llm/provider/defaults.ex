@@ -1177,6 +1177,12 @@ defmodule ReqLLM.Provider.Defaults do
       |> then(fn meta ->
         if is_nil(logprobs), do: meta, else: Map.put(meta, :logprobs, logprobs)
       end)
+      |> then(fn meta ->
+        case normalize_openai_annotations(raw_message["annotations"]) do
+          [] -> meta
+          annotations -> Map.put(meta, "annotations", annotations)
+        end
+      end)
 
     metadata = %{
       response_id: id,
@@ -1242,6 +1248,8 @@ defmodule ReqLLM.Provider.Defaults do
                   []
               end
 
+            annotation_chunks = decode_openai_annotations(delta)
+
             # Extract finish_reason
             finish_reason = Map.get(choice, "finish_reason")
 
@@ -1250,9 +1258,9 @@ defmodule ReqLLM.Provider.Defaults do
               meta_chunk = ReqLLM.StreamChunk.meta(%{finish_reason: normalized_reason})
 
               content_chunks ++
-                reasoning_details_chunks ++ logprobs_chunks ++ [meta_chunk]
+                reasoning_details_chunks ++ logprobs_chunks ++ annotation_chunks ++ [meta_chunk]
             else
-              content_chunks ++ reasoning_details_chunks ++ logprobs_chunks
+              content_chunks ++ reasoning_details_chunks ++ logprobs_chunks ++ annotation_chunks
             end
           end)
 
@@ -1285,6 +1293,43 @@ defmodule ReqLLM.Provider.Defaults do
   end
 
   def default_decode_stream_event(_, _model), do: []
+
+  @doc """
+  Normalize OpenAI annotation maps to the flat Responses API shape.
+
+  Chat Completions nests url_citation fields under `"url_citation"`, while the
+  Responses API returns them flat. Both normalize to the flat form so
+  `ReqLLM.Response.annotations/1` yields a single shape across API surfaces:
+
+      %{"type" => "url_citation", "url" => ..., "title" => ..., "start_index" => ..., "end_index" => ...}
+
+  Other annotation types (`file_citation`, `file_path`, ...) are already flat
+  and pass through unchanged. Non-list input returns `[]`.
+  """
+  @spec normalize_openai_annotations(term()) :: [map()]
+  def normalize_openai_annotations(annotations) when is_list(annotations) do
+    annotations
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(&normalize_openai_annotation/1)
+  end
+
+  def normalize_openai_annotations(_), do: []
+
+  defp normalize_openai_annotation(%{"type" => "url_citation", "url_citation" => %{} = inner}) do
+    Map.put(inner, "type", "url_citation")
+  end
+
+  defp normalize_openai_annotation(annotation), do: annotation
+
+  defp decode_openai_annotations(msg_or_delta) when is_map(msg_or_delta) do
+    case normalize_openai_annotations(msg_or_delta["annotations"]) do
+      [] ->
+        []
+
+      annotations ->
+        [ReqLLM.StreamChunk.meta(%{annotations: annotations})]
+    end
+  end
 
   defp decode_openai_message(message) when is_map(message) do
     content_chunks = decode_openai_content(message)
