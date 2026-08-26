@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- changelog -->
 
+## [v1.21.1](https://github.com/agentjido/req_llm/compare/v1.21.0...v1.21.1) (2026-08-26)
+
+
+
+
+### Bug Fixes:
+
+* openai: decode response.failed and error stream events as terminal error chunks (#977) by Eric Draut
+
+* anthropic: read thinking tokens from output_tokens_details (#976) by brent-emb
+
+* tool: ignore unknown schema input keys (#975) by Niklas Johansson
+
+* google: respect model thinking levels (#972) by mikehostetler
+
 ## [v1.21.0](https://github.com/agentjido/req_llm/compare/v1.20.0...v1.21.0) (2026-08-23)
 
 
