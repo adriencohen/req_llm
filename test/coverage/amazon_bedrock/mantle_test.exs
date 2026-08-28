@@ -15,6 +15,7 @@ defmodule ReqLLM.Coverage.AmazonBedrock.MantleTest do
 
   @routes [
     chat_completions: "amazon_bedrock:openai.gpt-oss-120b",
+    openai_v1_chat_completions: "amazon_bedrock:google.gemma-4-31b",
     messages: "amazon_bedrock:anthropic.claude-sonnet-5"
   ]
 
