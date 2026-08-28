@@ -162,6 +162,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       doc:
         "bedrock-mantle project (`proj_…`) the request is attributed to. Ignored on bedrock-runtime"
     ],
+    mantle_base_path: [
+      type: {:in, ["/v1", "/openai/v1"]},
+      doc:
+        "Base path of the Chat Completions route on bedrock-mantle. Default: `/openai/v1` for GPT-5, Gemma 4 and Grok models, `/v1` for every other family. Ignored for Claude and on bedrock-runtime"
+    ],
     use_converse: [
       type: :boolean,
       doc: "Force use of Bedrock Converse API (default: auto-detect based on tools presence)"
@@ -977,13 +982,14 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   defp stream_accept(:mantle), do: "text/event-stream"
   defp stream_accept(:runtime), do: "application/vnd.amazon.eventstream"
 
-  defp route(:mantle, model_id, _use_converse, _stream?, _opts) do
+  defp route(:mantle, model_id, _use_converse, _stream?, opts) do
     case mantle_wire(model_id) do
       :messages ->
         {"/anthropic/v1/messages", ReqLLM.Providers.AmazonBedrock.Anthropic, "anthropic"}
 
       :chat_completions ->
-        {"/v1/chat/completions", ReqLLM.Providers.AmazonBedrock.OpenAI, "openai"}
+        {mantle_base_path(model_id, opts) <> "/chat/completions",
+         ReqLLM.Providers.AmazonBedrock.OpenAI, "openai"}
     end
   end
 
@@ -1022,6 +1028,17 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
   defp mantle_wire(model_id) do
     if get_model_family(model_id) == "anthropic", do: :messages, else: :chat_completions
+  end
+
+  # Each model card states its bedrock-mantle base path:
+  # https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html
+  @mantle_openai_v1_prefixes ["openai.gpt-5", "google.gemma-4", "xai."]
+
+  defp mantle_base_path(model_id, opts) do
+    provider_option(opts, :mantle_base_path) ||
+      if String.starts_with?(model_id, @mantle_openai_v1_prefixes),
+        do: "/openai/v1",
+        else: "/v1"
   end
 
   defp route_headers(:mantle, "anthropic", opts) do

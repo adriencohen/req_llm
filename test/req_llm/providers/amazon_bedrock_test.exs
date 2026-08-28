@@ -1278,6 +1278,44 @@ defmodule ReqLLM.Providers.AmazonBedrockTest do
       assert %{"model" => "mistral.voxtral-mini-3b-2507"} = Jason.decode!(request.body)
     end
 
+    test "serves OpenAI-hosted models under /openai/v1", %{context: context, opts: opts} do
+      for id <- ["openai.gpt-5.4", "google.gemma-4-31b", "xai.grok-4.3"] do
+        {:ok, model} = ReqLLM.model(%{provider: :amazon_bedrock, id: id})
+        {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+
+        assert request.url.path == "/openai/v1/chat/completions"
+        assert request.options[:model_family] == "openai"
+        assert %{"model" => ^id} = Jason.decode!(request.body)
+
+        {:ok, finch_request} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+        assert finch_request.path == "/openai/v1/chat/completions"
+      end
+    end
+
+    test "mantle_base_path overrides the base picked from the model id", %{
+      context: context,
+      opts: opts,
+      gpt_oss: gpt_oss
+    } do
+      {:ok, gpt_5} = ReqLLM.model(%{provider: :amazon_bedrock, id: "openai.gpt-5.4"})
+
+      to_openai =
+        Keyword.put(opts, :provider_options, endpoint: :mantle, mantle_base_path: "/openai/v1")
+
+      to_v1 = Keyword.put(opts, :provider_options, endpoint: :mantle, mantle_base_path: "/v1")
+
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, gpt_oss, context, to_openai)
+      assert request.url.path == "/openai/v1/chat/completions"
+
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, gpt_5, context, to_v1)
+      assert request.url.path == "/v1/chat/completions"
+
+      {:ok, finch_request} =
+        AmazonBedrock.attach_stream(gpt_oss, context, to_openai, ReqLLM.Finch)
+
+      assert finch_request.path == "/openai/v1/chat/completions"
+    end
+
     test "sends Claude through the Anthropic Messages API", %{
       context: context,
       opts: opts,
