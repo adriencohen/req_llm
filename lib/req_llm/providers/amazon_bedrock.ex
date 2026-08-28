@@ -906,10 +906,10 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     get_in(opts, [:provider_options, :inference_profile_arn])
   end
 
+  # An ARN is the only Bedrock id containing "/"; it is encoded so it stays one
+  # path segment, as the AWS SDKs do. Other ids are sent raw, matching recorded fixtures.
   defp path_model_id(model_id, opts) do
     case inference_profile_arn(opts) || model_id do
-      # An ARN is the only Bedrock id containing "/"; encode it so it stays one
-      # path segment. Other ids are sent raw, matching recorded fixtures.
       "arn:" <> _ = arn -> URI.encode(arn, &URI.char_unreserved?/1)
       other -> other
     end
