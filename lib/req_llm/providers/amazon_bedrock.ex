@@ -147,6 +147,10 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       type: :string,
       doc: "AWS Session Token for temporary credentials"
     ],
+    inference_profile_arn: [
+      type: :string,
+      doc: "Application inference profile to call the model through"
+    ],
     use_converse: [
       type: :boolean,
       doc: "Force use of Bedrock Converse API (default: auto-detect based on tools presence)"
@@ -359,6 +363,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     # Note: provider_model_id is set by ReqLLM.model/1 to include inference profile prefixes
     # (e.g., "global.anthropic.claude-opus-4-6-v1") when the original model spec had one.
     model_id = model.provider_model_id || model.id
+    path_id = path_model_id(model_id, opts)
 
     # Check if we should use Converse API
     # Priority: explicit use_converse option > prompt caching optimization > auto-detect from tools presence
@@ -369,8 +374,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         # Use Converse API for unified tool calling
         endpoint =
           if opts[:stream],
-            do: "/model/#{model_id}/converse-stream",
-            else: "/model/#{model_id}/converse"
+            do: "/model/#{path_id}/converse-stream",
+            else: "/model/#{path_id}/converse"
 
         # Check if there's a model family formatter that wraps Converse
         # (e.g., Mistral formatter that pre-processes messages before delegating to Converse)
@@ -392,8 +397,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         # Use native model-specific endpoint
         endpoint =
           if opts[:stream],
-            do: "/model/#{model_id}/invoke-with-response-stream",
-            else: "/model/#{model_id}/invoke"
+            do: "/model/#{path_id}/invoke-with-response-stream",
+            else: "/model/#{path_id}/invoke"
 
         family = get_model_family(model_id)
         {endpoint, get_formatter_module(family), family}
@@ -422,13 +427,15 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         :model_family,
         :use_converse,
         :operation,
-        :tools
+        :tools,
+        :inference_profile_arn
       ])
       |> Req.Request.merge_options(
         ReqLLM.Provider.Defaults.finch_option(request) ++
           [
             base_url: base_url,
             model: model_id,
+            inference_profile_arn: inference_profile_arn(opts),
             model_family: model_family,
             context: opts[:context],
             use_converse: use_converse,
@@ -493,6 +500,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
     base_url = "https://bedrock-runtime.#{region}.amazonaws.com"
     model_id = model.provider_model_id || model.id
+    path_id = path_model_id(model_id, processed_opts)
     {model_family, formatter} = get_embedding_formatter(model_id)
 
     text = processed_opts[:text]
@@ -501,7 +509,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       {:ok, model_body} ->
         updated_request =
           request
-          |> Map.put(:url, URI.parse(base_url <> "/model/#{model_id}/invoke"))
+          |> Map.put(:url, URI.parse(base_url <> "/model/#{path_id}/invoke"))
           |> Req.Request.register_options([:model, :text, :operation, :model_family])
           |> Req.Request.merge_options(
             ReqLLM.Provider.Defaults.finch_option(request) ++
@@ -555,6 +563,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     # Get model ID - use provider_model_id if set (for models requiring specific API format),
     # otherwise fall back to canonical model ID
     model_id = model.provider_model_id || model.id
+    path_id = path_model_id(model_id, translated_opts)
 
     # Check if we should use Converse API
     # Priority: explicit use_converse option > prompt caching optimization > auto-detect from tools presence
@@ -577,11 +586,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
             ReqLLM.Providers.AmazonBedrock.Converse
           end
 
-        {formatter, "/model/#{model_id}/converse-stream"}
+        {formatter, "/model/#{path_id}/converse-stream"}
       else
         model_family = get_model_family(model_id)
         formatter = get_formatter_module(model_family)
-        {formatter, "/model/#{model_id}/invoke-with-response-stream"}
+        {formatter, "/model/#{path_id}/invoke-with-response-stream"}
       end
 
     translated_opts = Keyword.put(translated_opts, :use_converse, use_converse)
@@ -893,6 +902,19 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   # See: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
   @region_prefixes ["us", "eu", "ap", "apac", "ca", "au", "jp", "us-gov", "global"]
 
+  defp inference_profile_arn(opts) do
+    get_in(opts, [:provider_options, :inference_profile_arn])
+  end
+
+  defp path_model_id(model_id, opts) do
+    case inference_profile_arn(opts) || model_id do
+      # An ARN is the only Bedrock id containing "/"; encode it so it stays one
+      # path segment. Other ids are sent raw, matching recorded fixtures.
+      "arn:" <> _ = arn -> URI.encode(arn, &URI.char_unreserved?/1)
+      other -> other
+    end
+  end
+
   defp strip_region_prefix(model_id) do
     case String.split(model_id, ".", parts: 2) do
       [region, rest] when region in @region_prefixes -> rest
@@ -957,6 +979,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       finch_request
     end
   end
+
+  defp get_model_family("arn:" <> _), do: nil
 
   defp get_model_family(model_id) do
     normalized_id = strip_region_prefix(model_id)
@@ -1145,13 +1169,24 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   def decode_response({req, resp}) do
     err =
       ReqLLM.Error.API.Response.exception(
-        reason: "Bedrock API error",
+        reason: error_reason(resp.status, req.options),
         status: resp.status,
         response_body: resp.body
       )
 
     {req, err}
   end
+
+  # A native request body is the declared model's; Bedrock validates it against
+  # the model the profile serves and says only "schema violations" when they
+  # differ. Converse bodies are model-agnostic, so a 400 there is something else.
+  defp error_reason(400, %{inference_profile_arn: arn, model: model_id, use_converse: false})
+       when is_binary(arn) do
+    "Bedrock API error (the body was built in #{model_id}'s native format and sent through #{arn}; " <>
+      "a 400 here usually means the profile serves another model)"
+  end
+
+  defp error_reason(_status, _options), do: "Bedrock API error"
 
   defp decode_embedding_response({req, %{status: 200} = resp}) do
     if req.private[:llm_fixture_replay] do

@@ -23,6 +23,20 @@ For the full model-spec workflow, see [Model Specs](model-specs.md).
 
 Use exact Bedrock IDs from [LLM Catalog](https://llmcatalog.dev) when possible. The canonical ReqLLM provider prefix is `amazon_bedrock:`. For inference profiles, custom deployments, or new Bedrock model IDs, use a full explicit model spec when the registry has not caught up yet.
 
+An [application inference profile](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-create.html) is addressed by its ARN. Name the model it serves and pass the ARN as a provider option, so the request goes through the profile while capabilities and pricing come from the model:
+
+```elixir
+ReqLLM.generate_text(
+  "amazon_bedrock:anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "Hello",
+  provider_options: [inference_profile_arn: "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abcdef123456"]
+)
+```
+
+Declare the model the profile actually serves. On the Invoke API, Bedrock rejects a request body built for another model family, but not one built for a sibling model; pricing follows the declaration.
+
+The ARN also works as the model id itself (`amazon_bedrock:arn:aws:bedrock:…`); it then names no model family, so requests go through the Converse API and no pricing is known.
+
 **Provider Options:**
 
 ```elixir
