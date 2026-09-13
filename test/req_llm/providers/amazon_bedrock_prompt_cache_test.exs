@@ -1,15 +1,9 @@
 defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
   @moduledoc """
-  Tests for Bedrock prompt caching auto-switching behavior.
-
-  Verifies that when prompt caching is enabled with tools, Bedrock automatically
-  switches to native API (use_converse: false) for full cache control.
+  Bedrock prompt caching options and their effect on Converse/native routing.
   """
 
-  # Logger capture needs async: false
   use ExUnit.Case, async: false
-
-  import ExUnit.CaptureLog
 
   alias ReqLLM.Context
   alias ReqLLM.Providers.AmazonBedrock
@@ -23,8 +17,8 @@ defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
 
     context = Context.new([Context.user("test message")])
 
-    # Use a known Bedrock Claude model
-    {:ok, model} = ReqLLM.model("amazon_bedrock:anthropic.claude-3-5-sonnet-20241022-v2:0")
+    {:ok, model} =
+      ReqLLM.model(%{provider: :amazon_bedrock, id: "anthropic.claude-3-5-sonnet-20241022-v2:0"})
 
     {:ok, context: context, model: model}
   end
@@ -40,156 +34,134 @@ defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
     end
   end
 
-  describe "auto-switching to native API for caching" do
-    test "uses Converse API by default when tools are present", %{context: context, model: model} do
-      tools = [
-        Tool.new!(
-          name: "test_tool",
-          description: "Test",
-          parameter_schema: [],
-          callback: fn _ -> {:ok, "test"} end
-        )
-      ]
+  defp request_body(request) do
+    prepared = Req.Request.prepare(request)
+    Jason.decode!(prepared.body)
+  end
 
-      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, tools: tools)
+  defp test_tool do
+    Tool.new!(
+      name: "test_tool",
+      description: "Test",
+      parameter_schema: [],
+      callback: fn _ -> {:ok, "test"} end
+    )
+  end
+
+  describe "routing is independent of caching" do
+    test "caching with tools stays on Converse and emits cachePoint", %{
+      context: context,
+      model: model
+    } do
+      {:ok, request} =
+        AmazonBedrock.prepare_request(:chat, model, context,
+          tools: [test_tool()],
+          provider_options: [prompt_cache: true, cache_messages: true]
+        )
+
       assert get_api_type(request) == :converse
+
+      body = request_body(request)
+
+      assert List.last(body["toolConfig"]["tools"]) == %{"cachePoint" => %{"type" => "default"}}
+
+      assert List.last(List.last(body["messages"])["content"]) == %{
+               "cachePoint" => %{"type" => "default"}
+             }
     end
 
-    test "auto-switches to native API when caching + tools (with warning)", %{
+    test "legacy alias with tools also stays on Converse", %{context: context, model: model} do
+      {:ok, request} =
+        AmazonBedrock.prepare_request(:chat, model, context,
+          tools: [test_tool()],
+          anthropic_prompt_cache: true
+        )
+
+      assert get_api_type(request) == :converse
+
+      assert List.last(request_body(request)["toolConfig"]["tools"]) == %{
+               "cachePoint" => %{"type" => "default"}
+             }
+    end
+
+    test "caching without tools stays native and emits cache_control", %{model: model} do
+      context = Context.new([Context.system("Stable"), Context.user("test message")])
+
+      {:ok, request} =
+        AmazonBedrock.prepare_request(:chat, model, context,
+          provider_options: [prompt_cache: true, prompt_cache_ttl: "1h"]
+        )
+
+      assert get_api_type(request) == :native
+
+      assert [%{"cache_control" => %{"type" => "ephemeral", "ttl" => "1h"}}] =
+               request_body(request)["system"]
+    end
+
+    test "explicit use_converse: false with tools goes native", %{context: context, model: model} do
+      {:ok, request} =
+        AmazonBedrock.prepare_request(:chat, model, context,
+          tools: [test_tool()],
+          provider_options: [prompt_cache: true, use_converse: false]
+        )
+
+      assert get_api_type(request) == :native
+      assert %{"cache_control" => _} = List.last(request_body(request)["tools"])
+    end
+
+    test "explicit use_converse: true without tools goes Converse", %{
       context: context,
       model: model
     } do
-      tools = [
-        Tool.new!(
-          name: "test_tool",
-          description: "Test",
-          parameter_schema: [],
-          callback: fn _ -> {:ok, "test"} end
+      {:ok, request} =
+        AmazonBedrock.prepare_request(:chat, model, context,
+          provider_options: [prompt_cache: true, use_converse: true]
         )
-      ]
 
-      log =
-        capture_log(fn ->
-          {:ok, request} =
-            AmazonBedrock.prepare_request(:chat, model, context,
-              tools: tools,
-              anthropic_prompt_cache: true
-            )
+      assert get_api_type(request) == :converse
 
-          assert get_api_type(request) == :native
-        end)
-
-      assert log =~ "Bedrock prompt caching enabled with tools present"
-      assert log =~ "Auto-switching to native API"
-    end
-
-    test "respects explicit use_converse: true (no warning)", %{context: context, model: model} do
-      tools = [
-        Tool.new!(
-          name: "test_tool",
-          description: "Test",
-          parameter_schema: [],
-          callback: fn _ -> {:ok, "test"} end
-        )
-      ]
-
-      log =
-        capture_log(fn ->
-          {:ok, request} =
-            AmazonBedrock.prepare_request(:chat, model, context,
-              tools: tools,
-              anthropic_prompt_cache: true,
-              use_converse: true
-            )
-
-          assert get_api_type(request) == :converse
-        end)
-
-      refute log =~ "Auto-switching"
-    end
-
-    test "respects explicit use_converse: false (no warning)", %{context: context, model: model} do
-      tools = [
-        Tool.new!(
-          name: "test_tool",
-          description: "Test",
-          parameter_schema: [],
-          callback: fn _ -> {:ok, "test"} end
-        )
-      ]
-
-      log =
-        capture_log(fn ->
-          {:ok, request} =
-            AmazonBedrock.prepare_request(:chat, model, context,
-              tools: tools,
-              anthropic_prompt_cache: true,
-              use_converse: false
-            )
-
-          assert get_api_type(request) == :native
-        end)
-
-      refute log =~ "Auto-switching"
-    end
-
-    test "allows caching without tools (no auto-switch, no warning)", %{
-      context: context,
-      model: model
-    } do
-      log =
-        capture_log(fn ->
-          {:ok, request} =
-            AmazonBedrock.prepare_request(:chat, model, context, anthropic_prompt_cache: true)
-
-          assert get_api_type(request) == :native
-        end)
-
-      refute log =~ "Auto-switching"
+      assert List.last(request_body(request)["messages"]) |> Map.fetch!("content") |> List.last() ==
+               %{"text" => "test message"}
     end
 
     test "handles empty tools list same as no tools", %{context: context, model: model} do
-      log =
-        capture_log(fn ->
-          {:ok, request} =
-            AmazonBedrock.prepare_request(:chat, model, context,
-              tools: [],
-              anthropic_prompt_cache: true
-            )
+      {:ok, request} =
+        AmazonBedrock.prepare_request(:chat, model, context,
+          tools: [],
+          provider_options: [prompt_cache: true]
+        )
 
-          assert get_api_type(request) == :native
-        end)
-
-      refute log =~ "Auto-switching"
+      assert get_api_type(request) == :native
     end
   end
 
   describe "structured output (:object) with caching" do
-    test "works with :object operation and caching", %{context: context, model: model} do
-      compiled_schema = %{schema: %{type: "object", properties: %{}}}
+    @compiled_schema %{schema: %{type: "object", properties: %{}}}
 
-      # :object operation creates synthetic tool, should support caching
+    test "caches the synthetic tool on the native path", %{context: context, model: model} do
       {:ok, request} =
         AmazonBedrock.prepare_request(:object, model, context,
-          compiled_schema: compiled_schema,
-          anthropic_prompt_cache: true
+          compiled_schema: @compiled_schema,
+          provider_options: [prompt_cache: true]
         )
 
-      assert request != nil
-      # Note: :object uses different flow so we can't easily verify endpoint type in tests
+      assert get_api_type(request) == :native
+
+      assert [%{"name" => "structured_output", "cache_control" => _}] =
+               request_body(request)["tools"]
     end
 
-    test "works with explicit use_converse option", %{context: context, model: model} do
-      compiled_schema = %{schema: %{type: "object", properties: %{}}}
-
+    test "caches the synthetic tool on Converse", %{context: context, model: model} do
       {:ok, request} =
         AmazonBedrock.prepare_request(:object, model, context,
-          compiled_schema: compiled_schema,
-          anthropic_prompt_cache: true,
-          use_converse: true
+          compiled_schema: @compiled_schema,
+          provider_options: [prompt_cache: true, use_converse: true]
         )
 
-      assert request != nil
+      assert get_api_type(request) == :converse
+
+      assert [%{"toolSpec" => %{"name" => "structured_output"}}, %{"cachePoint" => _}] =
+               request_body(request)["toolConfig"]["tools"]
     end
   end
 
@@ -211,6 +183,34 @@ defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
 
       {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, tools: tools)
       assert get_api_type(request) == :converse
+    end
+  end
+
+  describe "option aliases" do
+    test "accepts generic options", %{model: model} do
+      {:ok, opts} =
+        ReqLLM.Provider.Options.process(AmazonBedrock, :chat, model,
+          provider_options: [prompt_cache: true, prompt_cache_ttl: "1h", cache_messages: -2]
+        )
+
+      assert get_in(opts, [:provider_options, :prompt_cache]) == true
+      assert get_in(opts, [:provider_options, :prompt_cache_ttl]) == "1h"
+      assert get_in(opts, [:provider_options, :cache_messages]) == -2
+    end
+
+    test "aliases do not raise under on_unsupported: :error", %{model: model} do
+      assert {:ok, _opts} =
+               ReqLLM.Provider.Options.process(AmazonBedrock, :chat, model,
+                 on_unsupported: :error,
+                 provider_options: [anthropic_prompt_cache: true]
+               )
+    end
+
+    test "rejects an unsupported ttl", %{model: model} do
+      assert {:error, _} =
+               ReqLLM.Provider.Options.process(AmazonBedrock, :chat, model,
+                 provider_options: [prompt_cache: true, prompt_cache_ttl: "30m"]
+               )
     end
   end
 end

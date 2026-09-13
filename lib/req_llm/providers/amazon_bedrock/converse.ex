@@ -76,11 +76,17 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
     }
   }
   ```
+
+  ## Prompt caching
+
+  `cachePoint` placement is handled by `ReqLLM.Providers.AmazonBedrock.PromptCache`;
+  see the Amazon Bedrock guide.
   """
 
   alias ReqLLM.Message
   alias ReqLLM.Message.ContentPart
   alias ReqLLM.Message.ReasoningDetails
+  alias ReqLLM.Providers.AmazonBedrock.PromptCache
   alias ReqLLM.ToolCall
 
   @reasoning_format "bedrock-converse-v1"
@@ -114,7 +120,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   For :object operations, creates a synthetic "structured_output" tool to
   leverage unified tool calling for structured JSON output across all models.
   """
-  def format_request(_model_id, context, opts) do
+  def format_request(model_id, context, opts) do
     operation = opts[:operation]
 
     # For :object operation, inject the structured_output tool
@@ -170,13 +176,11 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
         request
       end
 
-    # Add inference config
-    request = add_inference_config(request, opts)
-
-    # Add additionalModelRequestFields for model-specific features (e.g., Claude extended thinking)
-    request = add_additional_fields(request, opts)
-
-    add_guardrail_config(request, opts)
+    request
+    |> add_inference_config(opts)
+    |> add_additional_fields(opts)
+    |> add_guardrail_config(opts)
+    |> PromptCache.apply_converse(PromptCache.resolve(opts), model_id)
   end
 
   # Create the synthetic structured_output tool for :object operations
@@ -515,10 +519,16 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
         {:ok, ReqLLM.StreamChunk.meta(%{finish_reason: map_stop_reason(stop_reason)})}
 
       %{"metadata" => metadata} ->
+        provider_meta =
+          provider_meta(metadata["trace"], get_in(metadata, ["usage", "cacheDetails"]))
+
         meta =
           %{}
           |> maybe_put_usage(metadata["usage"])
-          |> maybe_put_trace(metadata["trace"])
+          |> maybe_put_meta(
+            :provider_meta,
+            if(provider_meta == %{}, do: nil, else: provider_meta)
+          )
 
         if meta == %{}, do: {:ok, nil}, else: {:ok, ReqLLM.StreamChunk.meta(meta)}
 
@@ -529,8 +539,18 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
 
   # Private functions
 
-  defp response_provider_meta(%{"trace" => trace}) when is_map(trace), do: %{trace: trace}
-  defp response_provider_meta(_response_body), do: %{}
+  defp response_provider_meta(response_body) do
+    provider_meta(response_body["trace"], get_in(response_body, ["usage", "cacheDetails"]))
+  end
+
+  defp provider_meta(trace, cache_details) do
+    %{}
+    |> maybe_put_meta(:trace, trace)
+    |> maybe_put_meta(:cache_details, cache_details)
+  end
+
+  defp maybe_put_meta(meta, _key, nil), do: meta
+  defp maybe_put_meta(meta, key, value), do: Map.put(meta, key, value)
 
   defp citations(%{"content" => blocks}) when is_list(blocks) do
     {annotations, _offset} =
@@ -569,11 +589,6 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   defp maybe_put_usage(meta, nil), do: meta
   defp maybe_put_usage(meta, usage), do: Map.put(meta, :usage, parse_usage(usage))
 
-  defp maybe_put_trace(meta, trace) when is_map(trace),
-    do: Map.put(meta, :provider_meta, %{trace: trace})
-
-  defp maybe_put_trace(meta, _trace), do: meta
-
   defp add_messages(request, messages) do
     {system_messages, non_system_messages} =
       Enum.split_with(messages, fn %Message{role: role} -> role == :system end)
@@ -604,12 +619,12 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
     |> List.flatten()
   end
 
-  defp encode_system_message(%Message{content: content}) when is_binary(content) do
-    encode_content(content)
+  defp encode_system_message(%Message{content: content} = msg) when is_binary(content) do
+    content |> encode_content() |> with_message_checkpoint(msg)
   end
 
-  defp encode_system_message(%Message{content: content}) when is_list(content) do
-    encode_system_content(content)
+  defp encode_system_message(%Message{content: content} = msg) when is_list(content) do
+    content |> encode_system_content() |> with_message_checkpoint(msg)
   end
 
   defp encode_system_message(_message), do: []
@@ -637,6 +652,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   defp all_tool_results?(content) when is_list(content) do
     Enum.all?(content, fn
       %{"toolResult" => _} -> true
+      %{"cachePoint" => _} -> true
       _ -> false
     end)
   end
@@ -794,33 +810,53 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
 
     %{
       "role" => "assistant",
-      "content" => encode_reasoning_details(msg) ++ encode_content(content) ++ tool_blocks
+      "content" =>
+        with_message_checkpoint(
+          encode_reasoning_details(msg) ++ encode_content(content) ++ tool_blocks,
+          msg
+        )
     }
   end
 
   # Tool result message (new ToolCall pattern)
   defp encode_message(%Message{role: :tool, tool_call_id: id} = msg) do
-    %{
-      "role" => "user",
-      "content" => [
-        %{
-          "toolResult" => %{
-            "toolUseId" => id,
-            "content" => encode_tool_result_content(msg)
-          }
-        }
-      ]
+    tool_result = %{
+      "toolResult" => %{
+        "toolUseId" => id,
+        "content" => encode_tool_result_content(msg)
+      }
     }
+
+    checkpoint = PromptCache.explicit_checkpoint(msg) || last_part_checkpoint(msg)
+
+    %{"role" => "user", "content" => [tool_result | List.wrap(checkpoint)]}
   end
 
   # Regular message (user, assistant, system) — returns nil if content is
   # empty after filtering, so the caller can reject it like empty ContentParts.
   defp encode_message(%Message{role: role, content: content} = msg) do
     case encode_reasoning_details(msg) ++ encode_content(content) do
-      [] -> nil
-      encoded -> %{"role" => Atom.to_string(role), "content" => encoded}
+      [] ->
+        nil
+
+      encoded ->
+        %{"role" => Atom.to_string(role), "content" => with_message_checkpoint(encoded, msg)}
     end
   end
+
+  defp with_message_checkpoint([], _msg), do: []
+
+  defp with_message_checkpoint(blocks, msg) do
+    if PromptCache.checkpoint?(List.last(blocks)),
+      do: blocks,
+      else: blocks ++ List.wrap(PromptCache.explicit_checkpoint(msg))
+  end
+
+  defp last_part_checkpoint(%Message{content: content}) when is_list(content) do
+    content |> Enum.reverse() |> Enum.find_value(&PromptCache.explicit_checkpoint/1)
+  end
+
+  defp last_part_checkpoint(_msg), do: nil
 
   defp encode_reasoning_details(%Message{role: :assistant, reasoning_details: details})
        when is_list(details) do
@@ -863,9 +899,12 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   end
 
   defp encode_content_parts(content) do
-    content
-    |> Enum.map(&encode_guardable_content_part/1)
-    |> Enum.reject(&is_nil/1)
+    Enum.flat_map(content, fn part ->
+      case encode_guardable_content_part(part) do
+        nil -> []
+        block -> [block | List.wrap(PromptCache.explicit_checkpoint(part))]
+      end
+    end)
   end
 
   defp validate_document_prompt(content) do
@@ -892,6 +931,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
 
   defp system_content_block?(%{"text" => _text}), do: true
   defp system_content_block?(%{"guardContent" => _guard_content}), do: true
+  defp system_content_block?(%{"cachePoint" => _cache_point}), do: true
   defp system_content_block?(_block), do: false
 
   defp encode_guardable_content_part(%ContentPart{type: type, metadata: metadata} = part)
@@ -1319,14 +1359,15 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   defp parse_usage(usage) do
     input = usage["inputTokens"] || 0
     output = usage["outputTokens"] || 0
-    cached = (usage["cacheReadInputTokens"] || 0) + (usage["cacheWriteInputTokens"] || 0)
 
     %{
       input_tokens: input,
       output_tokens: output,
       total_tokens: input + output,
-      cached_tokens: cached,
-      reasoning_tokens: 0
+      cached_tokens: usage["cacheReadInputTokens"] || 0,
+      cache_creation_tokens: usage["cacheWriteInputTokens"] || 0,
+      reasoning_tokens: 0,
+      input_includes_cached: false
     }
   end
 

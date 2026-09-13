@@ -191,19 +191,19 @@ Passed via `:provider_options` keyword:
 - **Purpose**: How much guardrail assessment detail Bedrock returns
 - **Example**: `provider_options: [guardrail_identifier: "abc123def456", guardrail_version: "1", guardrail_trace: "enabled"]`
 
-### Claude-Specific Options
+### Prompt Caching
 
-#### `anthropic_prompt_cache`
+ReqLLM emits `cachePoint` blocks on Converse and `cache_control` on InvokeModel and the Mantle Messages API. On Converse, `cache_control` metadata on a content part or a message adds an explicit checkpoint without enabling automatic caching, and a hint on a tool result lands after the enclosing result. Automatic tools checkpoints are skipped for `amazon.*` model ids. Caching does not change routing. Cache reads appear in `usage.cached_tokens`, writes in `usage.cache_creation_tokens`, and AWS's `cacheDetails` under `provider_meta.cache_details`. The `anthropic_*` names remain aliases. Model support, limits and TTLs are in [AWS prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
 
-- **Type**: Boolean
-- **Purpose**: Enable Anthropic prompt caching for Claude models
-- **Example**: `provider_options: [anthropic_prompt_cache: true]`
+- `prompt_cache`: enable automatic checkpoints after the tools and the system prompt.
+- `prompt_cache_ttl`: `"5m"` or `"1h"` for automatic checkpoints; omitted when unset.
+- `cache_messages`: also mark a message; `true` or `-1` the last, `0` the first.
 
-#### `anthropic_prompt_cache_ttl`
-
-- **Type**: String (e.g., `"1h"`)
-- **Purpose**: Cache TTL (default ~5min if omitted)
-- **Example**: `provider_options: [anthropic_prompt_cache_ttl: "1h"]`
+```elixir
+ReqLLM.generate_text(model, context,
+  provider_options: [use_converse: true, prompt_cache: true, prompt_cache_ttl: "1h", cache_messages: true]
+)
+```
 
 ## Attachments
 

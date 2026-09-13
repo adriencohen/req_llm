@@ -146,7 +146,7 @@ defmodule ReqLLM.Compatibility.ScenarioCatalog do
                        output_modalities: [:text, :tool_call],
                        requirements: [:tool_calling],
                        applicability: :focused,
-                       providers: [:anthropic, :openai, :zai_coding_plan],
+                       providers: [:anthropic, :openai, :zai_coding_plan, :amazon_bedrock],
                        fixtures: [
                          "sequential_tool_cache_1",
                          "sequential_tool_cache_2",
@@ -476,6 +476,11 @@ defmodule ReqLLM.Compatibility.ScenarioCatalog do
       provider: :zai_coding_plan,
       scenario: "sequential_tool_cache",
       test_file: "test/coverage/zai_coding_plan/sequential_tool_cache_test.exs"
+    },
+    %{
+      provider: :amazon_bedrock,
+      scenario: "sequential_tool_cache",
+      test_file: "test/coverage/amazon_bedrock/sequential_tool_cache_test.exs"
     },
     %{
       provider: :xai,
