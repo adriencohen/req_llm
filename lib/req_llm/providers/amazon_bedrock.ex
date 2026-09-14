@@ -453,7 +453,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
           ]
       )
 
-    model_body = formatter.format_request(model_id, context, opts)
+    model_body =
+      formatter.format_request(model_id, context, with_family_formatter(opts, model_id))
 
     # Add service_tier if specified (default is already "default")
     model_body =
@@ -574,7 +575,10 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     {path, formatter, model_family} =
       route(endpoint, model_id, use_converse, true, translated_opts)
 
-    translated_opts = Keyword.put(translated_opts, :use_converse, use_converse)
+    translated_opts =
+      translated_opts
+      |> Keyword.put(:use_converse, use_converse)
+      |> maybe_clean_thinking_after_translation(get_model_family(model_id), operation)
 
     context =
       ReqLLM.ToolCallIdCompat.apply_context(
@@ -586,7 +590,12 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       )
 
     # Build request body with translated options
-    body = formatter.format_request(model_id, context, translated_opts)
+    body =
+      formatter.format_request(
+        model_id,
+        context,
+        with_family_formatter(translated_opts, model_id)
+      )
 
     # Add service_tier if specified (default is already "default")
     body =
@@ -1440,6 +1449,9 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       opts
     end
   end
+
+  defp with_family_formatter(opts, model_id),
+    do: Keyword.put(opts, :formatter_module, get_formatter_module(get_model_family(model_id)))
 
   defp call_formatter(formatter, function, args) do
     apply(formatter, function, args)

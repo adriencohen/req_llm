@@ -1910,4 +1910,99 @@ defmodule ReqLLM.Providers.AmazonBedrock.ConverseTest do
       end
     end
   end
+
+  describe "Anthropic request fields" do
+    @anthropic ReqLLM.Providers.AmazonBedrock.Anthropic
+    @meta ReqLLM.Providers.AmazonBedrock.Meta
+
+    test "caller additional fields win over top_k and anthropic_beta" do
+      context = %ReqLLM.Context{messages: [%Message{role: :user, content: "Hi"}]}
+
+      result =
+        Converse.format_request("anthropic.claude", context,
+          formatter_module: @anthropic,
+          top_k: 5,
+          provider_options: [
+            anthropic_beta: ["a"],
+            additional_model_request_fields: %{
+              top_k: 7,
+              anthropic_beta: ["b"],
+              thinking: %{type: "enabled"}
+            }
+          ]
+        )
+
+      assert result["additionalModelRequestFields"] == %{
+               "top_k" => 7,
+               "anthropic_beta" => ["b"],
+               "thinking" => %{type: "enabled"}
+             }
+    end
+
+    test "Meta gets the caller fields and a normalized tool schema" do
+      context = %ReqLLM.Context{messages: [%Message{role: :user, content: "Hi"}]}
+
+      result =
+        Converse.format_request("meta.llama", context,
+          formatter_module: @meta,
+          tools: [tool()],
+          top_k: 5,
+          provider_options: [additional_model_request_fields: %{max_gen_len: 10}]
+        )
+
+      assert result["additionalModelRequestFields"] == %{"max_gen_len" => 10}
+
+      [%{"toolSpec" => %{"inputSchema" => %{"json" => schema}}}] = result["toolConfig"]["tools"]
+      refute Map.has_key?(schema, "additionalProperties")
+    end
+
+    test "omits toolChoice without tools and rejects unsupported choices" do
+      context = %ReqLLM.Context{messages: [%Message{role: :user, content: "Hi"}]}
+
+      result =
+        Converse.format_request("anthropic.claude", context,
+          formatter_module: @anthropic,
+          tool_choice: :auto
+        )
+
+      refute Map.has_key?(result, "toolConfig")
+
+      assert_raise ReqLLM.Error.Invalid.Parameter, fn ->
+        Converse.format_request("anthropic.claude", context,
+          formatter_module: @anthropic,
+          tools: [tool()],
+          tool_choice: :bogus
+        )
+      end
+    end
+
+    test "keeps tool result errors for Claude and Nova only" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :user, content: "Hi"},
+          %Message{
+            role: :assistant,
+            content: [],
+            tool_calls: [ReqLLM.ToolCall.new("call_1", "get_weather", "{}")]
+          },
+          %Message{
+            role: :tool,
+            tool_call_id: "call_1",
+            content: [ContentPart.text("boom")],
+            metadata: %{is_error: true}
+          }
+        ]
+      }
+
+      status = fn model_id, formatter ->
+        result = Converse.format_request(model_id, context, formatter_module: formatter)
+        [%{"toolResult" => tool_result}] = List.last(result["messages"])["content"]
+        tool_result["status"]
+      end
+
+      assert status.("anthropic.claude", @anthropic) == "error"
+      assert status.("us.amazon.nova-pro-v1:0", Converse) == "error"
+      assert status.("meta.llama", @meta) == nil
+    end
+  end
 end

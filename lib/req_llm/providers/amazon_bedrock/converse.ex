@@ -146,7 +146,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
     request = %{}
 
     # Add messages
-    request = add_messages(request, context.messages)
+    request = add_messages(request, keep_tool_errors(context.messages, model_id, opts))
 
     # Add tools if present (tools are in opts, not context)
     # Add tools from opts or persisted from context
@@ -668,7 +668,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
 
         # Some model families need to normalize tool schemas
         # Check if formatter module provides normalization
-        if formatter_module &&
+        if formatter_module && Code.ensure_loaded?(formatter_module) &&
              function_exported?(formatter_module, :normalize_tool_schema, 1) do
           # Normalize the inputSchema.json field
           update_in(
@@ -688,43 +688,46 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
 
   # Add tool choice configuration to force specific tool usage
   # Only supported by some model families - check with the formatter module
-  defp add_tool_choice(request, tool_choice, _model_family, formatter_module) do
+  defp add_tool_choice(
+         %{"toolConfig" => %{"tools" => [_ | _]} = tool_config} = request,
+         tool_choice,
+         _model_family,
+         formatter_module
+       ) do
     # Ask the model family formatter if it supports toolChoice in Converse API
     supports_tool_choice =
-      formatter_module &&
+      formatter_module && Code.ensure_loaded?(formatter_module) &&
         function_exported?(formatter_module, :supports_converse_tool_choice?, 0) &&
         formatter_module.supports_converse_tool_choice?()
 
     if supports_tool_choice do
-      # Converse API uses toolChoice in toolConfig
-      existing_tool_config = Map.get(request, "toolConfig", %{})
-
-      # Convert from Anthropic format to Converse format
-      tool_choice_config =
-        case tool_choice do
-          %{type: "tool", name: name} ->
-            # Force specific tool
-            %{"tool" => %{"name" => name}}
-
-          %{type: "any"} ->
-            # Force any tool (must use a tool)
-            %{"any" => %{}}
-
-          %{type: "auto"} ->
-            # Auto decide (default)
-            %{"auto" => %{}}
-
-          _ ->
-            # Unknown format, use auto
-            %{"auto" => %{}}
-        end
-
-      updated_tool_config = Map.put(existing_tool_config, "toolChoice", tool_choice_config)
-      Map.put(request, "toolConfig", updated_tool_config)
+      choice = converse_tool_choice(tool_choice)
+      Map.put(request, "toolConfig", Map.put(tool_config, "toolChoice", choice))
     else
       # For non-Anthropic models, skip toolChoice entirely
       request
     end
+  end
+
+  defp add_tool_choice(request, _tool_choice, _model_family, _formatter_module), do: request
+
+  defp converse_tool_choice(choice) when choice in [:auto, "auto"], do: %{"auto" => %{}}
+  defp converse_tool_choice(choice) when choice in [:required, "required"], do: %{"any" => %{}}
+  defp converse_tool_choice(%{type: "tool", name: name}), do: %{"tool" => %{"name" => name}}
+
+  defp converse_tool_choice(%{"type" => "tool", "name" => name}),
+    do: %{"tool" => %{"name" => name}}
+
+  defp converse_tool_choice(%{type: "any"}), do: %{"any" => %{}}
+  defp converse_tool_choice(%{"type" => "any"}), do: %{"any" => %{}}
+  defp converse_tool_choice(%{type: "auto"}), do: %{"auto" => %{}}
+  defp converse_tool_choice(%{"type" => "auto"}), do: %{"auto" => %{}}
+
+  defp converse_tool_choice(choice) do
+    invalid_part(
+      "Converse supports tool_choice :auto, :required or %{type: \"tool\", name: name}, " <>
+        "got #{inspect(choice)}; use_converse: false keeps the InvokeModel behavior"
+    )
   end
 
   defp add_inference_config(request, opts) do
@@ -766,16 +769,27 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   end
 
   defp add_additional_fields(request, opts) do
-    # Check both locations: top-level opts and provider_options
-    # (after Options.process, fields are in provider_options)
-    fields =
-      opts[:additional_model_request_fields] ||
-        get_in(opts, [:provider_options, :additional_model_request_fields])
+    case Map.merge(anthropic_fields(opts), caller_fields(opts)) do
+      fields when map_size(fields) == 0 -> request
+      fields -> Map.put(request, "additionalModelRequestFields", fields)
+    end
+  end
 
-    case fields do
-      nil -> request
-      fields when is_map(fields) -> Map.put(request, "additionalModelRequestFields", fields)
-      _ -> request
+  defp caller_fields(opts) do
+    fields =
+      get_in(opts, [:provider_options, :additional_model_request_fields]) ||
+        opts[:additional_model_request_fields] || %{}
+
+    Map.new(fields, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  defp anthropic_fields(opts) do
+    if opts[:formatter_module] == ReqLLM.Providers.AmazonBedrock.Anthropic do
+      %{}
+      |> put_option("top_k", opts[:top_k])
+      |> put_option("anthropic_beta", get_in(opts, [:provider_options, :anthropic_beta]))
+    else
+      %{}
     end
   end
 
@@ -821,10 +835,11 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   # Tool result message (new ToolCall pattern)
   defp encode_message(%Message{role: :tool, tool_call_id: id} = msg) do
     tool_result = %{
-      "toolResult" => %{
-        "toolUseId" => id,
-        "content" => encode_tool_result_content(msg)
-      }
+      "toolResult" =>
+        put_error_status(
+          %{"toolUseId" => id, "content" => encode_tool_result_content(msg)},
+          msg.metadata
+        )
     }
 
     checkpoint = PromptCache.explicit_checkpoint(msg) || last_part_checkpoint(msg)
@@ -843,6 +858,22 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
         %{"role" => Atom.to_string(role), "content" => with_message_checkpoint(encoded, msg)}
     end
   end
+
+  defp put_error_status(block, %{is_error: true}), do: Map.put(block, "status", "error")
+  defp put_error_status(block, %{"is_error" => true}), do: Map.put(block, "status", "error")
+  defp put_error_status(block, _metadata), do: block
+
+  defp keep_tool_errors(messages, model_id, opts) do
+    if opts[:formatter_module] == ReqLLM.Providers.AmazonBedrock.Anthropic or
+         model_id =~ ~r{(^|[./])amazon\.},
+       do: messages,
+       else: Enum.map(messages, &drop_tool_error/1)
+  end
+
+  defp drop_tool_error(%Message{role: :tool, metadata: metadata} = msg) when is_map(metadata),
+    do: %{msg | metadata: Map.drop(metadata, [:is_error, "is_error"])}
+
+  defp drop_tool_error(msg), do: msg
 
   defp with_message_checkpoint([], _msg), do: []
 

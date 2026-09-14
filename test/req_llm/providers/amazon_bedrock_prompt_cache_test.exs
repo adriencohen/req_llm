@@ -135,6 +135,133 @@ defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
     end
   end
 
+  describe "Converse keeps what the InvokeModel request carried" do
+    defp lookup_tool do
+      Tool.new!(
+        name: "lookup",
+        description: "Lookup",
+        parameter_schema: [],
+        callback: fn _ -> {:ok, "x"} end
+      )
+    end
+
+    defp claude_37 do
+      ReqLLM.model!(%{provider: :amazon_bedrock, id: "anthropic.claude-3-7-sonnet-20250219-v1:0"})
+    end
+
+    defp cached_tool_opts(opts),
+      do: [tools: [lookup_tool()], anthropic_prompt_cache: true] ++ opts
+
+    defp bodies(context, opts) do
+      model = claude_37()
+      opts = cached_tool_opts(opts)
+
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+      {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+      [request_body(request), Jason.decode!(stream.body)]
+    end
+
+    defp both_routes(context, opts) do
+      native_opts =
+        Keyword.update(
+          opts,
+          :provider_options,
+          [use_converse: false],
+          &[{:use_converse, false} | &1]
+        )
+
+      %{converse: bodies(context, opts), native: bodies(context, native_opts)}
+    end
+
+    test "keeps a required tool choice", %{context: context} do
+      %{converse: converse, native: native} = both_routes(context, tool_choice: :required)
+
+      for body <- converse, do: assert(body["toolConfig"]["toolChoice"] == %{"any" => %{}})
+      for body <- native, do: assert(body["tool_choice"] == %{"type" => "any"})
+    end
+
+    test "keeps a named tool choice", %{context: context} do
+      %{converse: converse, native: native} =
+        both_routes(context, tool_choice: %{type: "tool", name: "lookup"})
+
+      for body <- converse,
+          do: assert(body["toolConfig"]["toolChoice"] == %{"tool" => %{"name" => "lookup"}})
+
+      for body <- native,
+          do: assert(body["tool_choice"] == %{"type" => "tool", "name" => "lookup"})
+    end
+
+    test "rejects tool_choice none on Converse and keeps it on InvokeModel", %{context: context} do
+      opts = cached_tool_opts(tool_choice: :none)
+
+      assert_raise ReqLLM.Error.Invalid.Parameter, fn ->
+        AmazonBedrock.prepare_request(:chat, claude_37(), context, opts)
+      end
+
+      assert {:error, {:bedrock_stream_build_failed, %ReqLLM.Error.Invalid.Parameter{}}} =
+               AmazonBedrock.attach_stream(claude_37(), context, opts, ReqLLM.Finch)
+
+      for body <- bodies(context, tool_choice: :none, provider_options: [use_converse: false]),
+          do: assert(body["tool_choice"] == %{"type" => "none"})
+    end
+
+    test "keeps top_k", %{context: context} do
+      %{converse: converse, native: native} = both_routes(context, top_k: 5)
+
+      for body <- converse, do: assert(body["additionalModelRequestFields"]["top_k"] == 5)
+      for body <- native, do: assert(body["top_k"] == 5)
+    end
+
+    test "keeps anthropic_beta", %{context: context} do
+      betas = ["token-efficient-tools-2025-02-19"]
+
+      %{converse: converse, native: native} =
+        both_routes(context, provider_options: [anthropic_beta: betas])
+
+      for body <- converse,
+          do: assert(body["additionalModelRequestFields"]["anthropic_beta"] == betas)
+
+      for body <- native, do: assert(body["anthropic_beta"] == betas)
+    end
+
+    test "drops thinking when a tool is forced" do
+      context = Context.new([Context.user("Look up the weather")])
+
+      %{converse: converse, native: native} =
+        both_routes(context,
+          tool_choice: %{type: "tool", name: "lookup"},
+          provider_options: [
+            additional_model_request_fields: %{thinking: %{type: "enabled", budget_tokens: 1024}}
+          ]
+        )
+
+      for body <- converse, do: refute(get_in(body, ["additionalModelRequestFields", "thinking"]))
+      for body <- native, do: refute(body["thinking"])
+    end
+
+    test "keeps the tool result error status" do
+      context =
+        Context.new([
+          Context.user("Look up the weather"),
+          Context.assistant("", tool_calls: [ReqLLM.ToolCall.new("call_1", "lookup", "{}")]),
+          %{Context.tool_result("call_1", "boom") | metadata: %{is_error: true}}
+        ])
+
+      %{converse: converse, native: native} = both_routes(context, [])
+
+      for body <- converse do
+        assert [%{"toolResult" => %{"toolUseId" => "call_1", "status" => "error"}}] =
+                 List.last(body["messages"])["content"]
+      end
+
+      for body <- native do
+        assert [%{"type" => "tool_result", "tool_use_id" => "call_1", "is_error" => true}] =
+                 List.last(body["messages"])["content"]
+      end
+    end
+  end
+
   describe "structured output (:object) with caching" do
     @compiled_schema %{schema: %{type: "object", properties: %{}}}
 
@@ -152,16 +279,29 @@ defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
     end
 
     test "caches the synthetic tool on Converse", %{context: context, model: model} do
-      {:ok, request} =
-        AmazonBedrock.prepare_request(:object, model, context,
-          compiled_schema: @compiled_schema,
-          provider_options: [prompt_cache: true, use_converse: true]
+      opts = [
+        compiled_schema: @compiled_schema,
+        provider_options: [prompt_cache: true, use_converse: true]
+      ]
+
+      {:ok, request} = AmazonBedrock.prepare_request(:object, model, context, opts)
+
+      {:ok, stream} =
+        AmazonBedrock.attach_stream(
+          model,
+          context,
+          [operation: :object] ++ opts,
+          ReqLLM.Finch
         )
 
       assert get_api_type(request) == :converse
 
-      assert [%{"toolSpec" => %{"name" => "structured_output"}}, %{"cachePoint" => _}] =
-               request_body(request)["toolConfig"]["tools"]
+      for body <- [request_body(request), Jason.decode!(stream.body)] do
+        assert [%{"toolSpec" => %{"name" => "structured_output"}}, %{"cachePoint" => _}] =
+                 body["toolConfig"]["tools"]
+
+        assert body["toolConfig"]["toolChoice"] == %{"tool" => %{"name" => "structured_output"}}
+      end
     end
   end
 
