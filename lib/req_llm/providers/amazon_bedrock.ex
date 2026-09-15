@@ -189,22 +189,35 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       type: {:in, ["enabled", "disabled", "enabled_full"]},
       doc: "Guardrail trace detail returned in the response"
     ],
-    anthropic_prompt_cache: [
+    prompt_cache: [
       type: :boolean,
-      doc: "Enable Anthropic prompt caching for Claude models on Bedrock"
+      doc:
+        "Enable automatic prompt cache checkpoints after tools, system, and the `cache_messages` position"
     ],
-    anthropic_prompt_cache_ttl: [
-      type: :string,
-      doc: "TTL for cache (\"1h\" for one hour; omit for default ~5m)"
+    prompt_cache_ttl: [
+      type: {:in, ["5m", "1h"]},
+      doc: "TTL for automatic checkpoints. Omitted when unset"
     ],
-    anthropic_cache_messages: [
+    cache_messages: [
       type: {:or, [:boolean, :integer]},
       doc: """
-      Add cache breakpoint at a message position (requires anthropic_prompt_cache: true).
+      Add a checkpoint at a message position (requires prompt_cache: true).
       - `-1` or `true` - last message
       - `-2` - second-to-last, `-3` - third-to-last, etc.
       - `0` - first message, `1` - second, etc.
       """
+    ],
+    anthropic_prompt_cache: [
+      type: :boolean,
+      doc: "Alias of prompt_cache"
+    ],
+    anthropic_prompt_cache_ttl: [
+      type: :string,
+      doc: "Alias of prompt_cache_ttl"
+    ],
+    anthropic_cache_messages: [
+      type: {:or, [:boolean, :integer]},
+      doc: "Alias of cache_messages"
     ],
     anthropic_beta: [
       type: {:list, :string},
@@ -393,8 +406,6 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     # (e.g., "global.anthropic.claude-opus-4-6-v1") when the original model spec had one.
     model_id = model.provider_model_id || model.id
 
-    # Check if we should use Converse API
-    # Priority: explicit use_converse option > prompt caching optimization > auto-detect from tools presence
     use_converse = determine_use_converse(model_id, opts)
 
     {endpoint_base, formatter, model_family} =
@@ -442,7 +453,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
           ]
       )
 
-    model_body = formatter.format_request(model_id, context, opts)
+    model_body =
+      formatter.format_request(model_id, context, with_family_formatter(opts, model_id))
 
     # Add service_tier if specified (default is already "default")
     model_body =
@@ -558,14 +570,15 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     model_id = model.provider_model_id || model.id
     endpoint = endpoint(translated_opts)
 
-    # Check if we should use Converse API
-    # Priority: explicit use_converse option > prompt caching optimization > auto-detect from tools presence
     use_converse = determine_use_converse(model_id, translated_opts)
 
     {path, formatter, model_family} =
       route(endpoint, model_id, use_converse, true, translated_opts)
 
-    translated_opts = Keyword.put(translated_opts, :use_converse, use_converse)
+    translated_opts =
+      translated_opts
+      |> Keyword.put(:use_converse, use_converse)
+      |> maybe_clean_thinking_after_translation(get_model_family(model_id), operation)
 
     context =
       ReqLLM.ToolCallIdCompat.apply_context(
@@ -577,7 +590,12 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       )
 
     # Build request body with translated options
-    body = formatter.format_request(model_id, context, translated_opts)
+    body =
+      formatter.format_request(
+        model_id,
+        context,
+        with_family_formatter(translated_opts, model_id)
+      )
 
     # Add service_tier if specified (default is already "default")
     body =
@@ -1432,11 +1450,14 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     end
   end
 
+  defp with_family_formatter(opts, model_id),
+    do: Keyword.put(opts, :formatter_module, get_formatter_module(get_model_family(model_id)))
+
   defp call_formatter(formatter, function, args) do
     apply(formatter, function, args)
   end
 
-  # Private helper: Determine whether to use Converse API with caching optimization
+  # Private helper: Determine whether to use Converse API
   defp determine_use_converse(model_id, opts) do
     endpoint(opts) == :runtime and runtime_use_converse?(model_id, opts)
   end
@@ -1464,37 +1485,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
       nil ->
         has_tools = opts[:tools] != nil and opts[:tools] != []
-        # After Options.process, anthropic_prompt_cache is in :provider_options
-        has_caching = get_in(opts, [:provider_options, :anthropic_prompt_cache]) == true
-
-        cond do
-          # Formatters that require Converse API (like Mistral wrapper)
-          requires_converse ->
-            true
-
-          # Models without dedicated formatters fall back to Converse API
-          is_fallback_to_converse ->
-            true
-
-          # If caching is enabled with tools, force native API for full caching support
-          has_caching and has_tools ->
-            require Logger
-
-            Logger.warning("""
-            Bedrock prompt caching enabled with tools present. Auto-switching to native API
-            (use_converse: false) for full cache control. Converse API only caches system prompts.
-            To silence this warning, explicitly set use_converse: true or use_converse: false.
-            """)
-
-            false
-
-          # Default: use Converse for tools, native otherwise
-          has_tools ->
-            true
-
-          true ->
-            false
-        end
+        requires_converse or is_fallback_to_converse or has_tools
     end
   end
 

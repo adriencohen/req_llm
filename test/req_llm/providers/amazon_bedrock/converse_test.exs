@@ -967,7 +967,9 @@ defmodule ReqLLM.Providers.AmazonBedrock.ConverseTest do
                output_tokens: 5,
                total_tokens: 15,
                cached_tokens: 0,
-               reasoning_tokens: 0
+               cache_creation_tokens: 0,
+               reasoning_tokens: 0,
+               input_includes_cached: false
              }
 
       assert result.message.role == :assistant
@@ -1075,6 +1077,43 @@ defmodule ReqLLM.Providers.AmazonBedrock.ConverseTest do
       assert result.finish_reason == :content_filter
       assert result.provider_meta.trace == trace
     end
+
+    test "splits cache reads and writes and keeps total as input plus output" do
+      response_body = %{
+        "output" => %{"message" => %{"role" => "assistant", "content" => [%{"text" => "ok"}]}},
+        "stopReason" => "end_turn",
+        "usage" => %{
+          "inputTokens" => 12,
+          "outputTokens" => 5,
+          "cacheReadInputTokens" => 4000,
+          "cacheWriteInputTokens" => 900
+        }
+      }
+
+      {:ok, result} = Converse.parse_response(response_body, model: "test")
+
+      assert result.usage.input_tokens == 12
+      assert result.usage.cached_tokens == 4000
+      assert result.usage.cache_creation_tokens == 900
+      assert result.usage.total_tokens == 17
+      assert result.usage.input_includes_cached == false
+    end
+
+    test "exposes cacheDetails next to the guardrail trace" do
+      trace = %{"guardrail" => %{}}
+      cache_details = [%{"ttl" => "5m", "inputTokens" => 900}]
+
+      response_body = %{
+        "output" => %{"message" => %{"role" => "assistant", "content" => [%{"text" => "ok"}]}},
+        "stopReason" => "end_turn",
+        "trace" => trace,
+        "usage" => %{"inputTokens" => 1, "outputTokens" => 1, "cacheDetails" => cache_details}
+      }
+
+      {:ok, result} = Converse.parse_response(response_body, model: "test")
+
+      assert result.provider_meta == %{trace: trace, cache_details: cache_details}
+    end
   end
 
   describe "parse_stream_chunk/2" do
@@ -1132,6 +1171,33 @@ defmodule ReqLLM.Providers.AmazonBedrock.ConverseTest do
                type: :meta,
                metadata: %{usage: %{input_tokens: 100, output_tokens: 50}}
              } = result
+    end
+
+    test "parses metadata with split cache usage and cacheDetails" do
+      cache_details = [%{"ttl" => "1h", "inputTokens" => 900}]
+
+      chunk = %{
+        "metadata" => %{
+          "usage" => %{
+            "inputTokens" => 12,
+            "outputTokens" => 5,
+            "cacheReadInputTokens" => 4000,
+            "cacheWriteInputTokens" => 900,
+            "cacheDetails" => cache_details
+          },
+          "trace" => %{"guardrail" => %{}}
+        }
+      }
+
+      {:ok, result} = Converse.parse_stream_chunk(chunk, "test-model")
+
+      assert result.metadata.usage.cached_tokens == 4000
+      assert result.metadata.usage.cache_creation_tokens == 900
+
+      assert result.metadata.provider_meta == %{
+               trace: %{"guardrail" => %{}},
+               cache_details: cache_details
+             }
     end
 
     test "parses metadata with guardrail trace" do
@@ -1512,6 +1578,431 @@ defmodule ReqLLM.Providers.AmazonBedrock.ConverseTest do
         Converse.format_request("test-model", context, [])["messages"]
 
       block
+    end
+  end
+
+  describe "prompt caching" do
+    @cp %{"cachePoint" => %{"type" => "default"}}
+
+    defp tool do
+      ReqLLM.Tool.new!(
+        name: "get_weather",
+        description: "Get weather",
+        parameter_schema: [location: [type: :string, required: true]],
+        callback: fn _ -> {:ok, "sunny"} end
+      )
+    end
+
+    defp cached_context do
+      %ReqLLM.Context{
+        messages: [
+          %Message{role: :system, content: "You are helpful"},
+          %Message{role: :user, content: "Hello"},
+          %Message{role: :assistant, content: "Hi"},
+          %Message{role: :user, content: "Weather?"}
+        ]
+      }
+    end
+
+    test "emits nothing without prompt_cache" do
+      result = Converse.format_request("anthropic.claude", cached_context(), tools: [tool()])
+
+      refute Enum.any?(result["system"], &match?(%{"cachePoint" => _}, &1))
+      refute Enum.any?(result["toolConfig"]["tools"], &match?(%{"cachePoint" => _}, &1))
+    end
+
+    test "appends tools, system, and message checkpoints" do
+      result =
+        Converse.format_request("anthropic.claude", cached_context(),
+          tools: [tool()],
+          prompt_cache: true,
+          cache_messages: true
+        )
+
+      assert List.last(result["toolConfig"]["tools"]) == @cp
+      assert result["system"] == [%{"text" => "You are helpful"}, @cp]
+      assert List.last(result["messages"])["content"] == [%{"text" => "Weather?"}, @cp]
+    end
+
+    test "reads options nested under provider_options with a ttl" do
+      result =
+        Converse.format_request("anthropic.claude", cached_context(),
+          provider_options: [prompt_cache: true, prompt_cache_ttl: "1h"]
+        )
+
+      assert List.last(result["system"]) == %{
+               "cachePoint" => %{"type" => "default", "ttl" => "1h"}
+             }
+    end
+
+    test "skips the tools checkpoint for Nova" do
+      result =
+        Converse.format_request("us.amazon.nova-pro-v1:0", cached_context(),
+          tools: [tool()],
+          prompt_cache: true
+        )
+
+      refute match?(%{"cachePoint" => _}, List.last(result["toolConfig"]["tools"]))
+      assert List.last(result["system"]) == @cp
+    end
+
+    test "emits an explicit checkpoint after a content part with cache_control metadata" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{
+            role: :system,
+            content: [
+              ContentPart.text("Stable", %{cache_control: %{type: "ephemeral", ttl: "1h"}}),
+              ContentPart.text("Dynamic")
+            ]
+          },
+          %Message{
+            role: :user,
+            content: [ContentPart.text("Hi", %{"cache_control" => %{"type" => "ephemeral"}})]
+          }
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, [])
+
+      assert result["system"] == [
+               %{"text" => "Stable"},
+               %{"cachePoint" => %{"type" => "default", "ttl" => "1h"}},
+               %{"text" => "Dynamic"}
+             ]
+
+      assert hd(result["messages"])["content"] == [%{"text" => "Hi"}, @cp]
+    end
+
+    test "does not duplicate an explicit checkpoint at the system boundary" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{
+            role: :system,
+            content: [ContentPart.text("Stable", %{cache_control: %{type: "ephemeral"}})]
+          },
+          %Message{role: :user, content: "Hi"}
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, prompt_cache: true)
+
+      assert result["system"] == [%{"text" => "Stable"}, @cp]
+    end
+
+    test "lifts a tool result cache hint to a sibling checkpoint" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :user, content: "Hi"},
+          %Message{
+            role: :assistant,
+            content: "",
+            tool_calls: [ReqLLM.ToolCall.new("call_1", "get_weather", "{}")]
+          },
+          %Message{
+            role: :tool,
+            tool_call_id: "call_1",
+            content: [ContentPart.text("sunny", %{cache_control: %{type: "ephemeral"}})]
+          }
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, tools: [tool()])
+      tool_result_message = List.last(result["messages"])
+
+      assert [%{"toolResult" => %{"content" => [%{"text" => "sunny"}]}}, @cp] =
+               tool_result_message["content"]
+    end
+
+    test "places a message-level cache_control hint after the whole message" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{
+            role: :system,
+            content: "Stable",
+            metadata: %{cache_control: %{type: "ephemeral", ttl: "1h"}}
+          },
+          %Message{role: :user, content: "Hi"},
+          %Message{
+            role: :assistant,
+            content: [],
+            tool_calls: [ReqLLM.ToolCall.new("call_1", "get_weather", "{}")],
+            metadata: %{cache_control: %{type: "ephemeral"}}
+          },
+          %Message{
+            role: :tool,
+            tool_call_id: "call_1",
+            content: "sunny",
+            metadata: %{cache_control: %{type: "ephemeral"}}
+          },
+          %Message{
+            role: :user,
+            content: "Thanks",
+            metadata: %{"cache_control" => %{"type" => "ephemeral"}}
+          }
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, tools: [tool()])
+
+      assert result["system"] == [
+               %{"text" => "Stable"},
+               %{"cachePoint" => %{"type" => "default", "ttl" => "1h"}}
+             ]
+
+      [_hi, assistant, tool_result, thanks] = result["messages"]
+      assert [%{"toolUse" => _}, @cp] = assistant["content"]
+      assert [%{"toolResult" => _}, @cp] = tool_result["content"]
+      assert thanks["content"] == [%{"text" => "Thanks"}, @cp]
+    end
+
+    test "does not duplicate a message-level hint on the cache_messages position" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :user, content: "Hi", metadata: %{cache_control: %{type: "ephemeral"}}}
+        ]
+      }
+
+      result =
+        Converse.format_request("anthropic.claude", context,
+          prompt_cache: true,
+          cache_messages: true
+        )
+
+      assert hd(result["messages"])["content"] == [%{"text" => "Hi"}, @cp]
+    end
+
+    test "drops an empty system message even when it carries a cache hint" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{
+            role: :system,
+            content: [ContentPart.text("")],
+            metadata: %{cache_control: %{type: "ephemeral"}}
+          },
+          %Message{role: :user, content: "Hi"}
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, [])
+
+      refute Map.has_key?(result, "system")
+    end
+
+    test "emits one checkpoint when the last part and the message both carry a hint" do
+      hint = %{cache_control: %{type: "ephemeral"}}
+
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :user, content: [ContentPart.text("Hi", hint)], metadata: hint}
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, [])
+
+      assert hd(result["messages"])["content"] == [%{"text" => "Hi"}, @cp]
+    end
+
+    test "still merges consecutive tool results that carry checkpoints" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :user, content: "Hi"},
+          %Message{
+            role: :assistant,
+            content: "",
+            tool_calls: [
+              ReqLLM.ToolCall.new("call_1", "get_weather", "{}"),
+              ReqLLM.ToolCall.new("call_2", "get_weather", "{}")
+            ]
+          },
+          %Message{
+            role: :tool,
+            tool_call_id: "call_1",
+            content: [ContentPart.text("sunny", %{cache_control: %{type: "ephemeral"}})]
+          },
+          %Message{role: :tool, tool_call_id: "call_2", content: "rainy"}
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, tools: [tool()])
+      [_, _, merged] = result["messages"]
+
+      assert [%{"toolResult" => _}, @cp, %{"toolResult" => _}] = merged["content"]
+    end
+
+    test "drops nil system blocks" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :system, content: [ContentPart.text(""), ContentPart.text("Keep")]},
+          %Message{role: :user, content: "Hi"}
+        ]
+      }
+
+      result = Converse.format_request("anthropic.claude", context, prompt_cache: true)
+
+      assert result["system"] == [%{"text" => "Keep"}, @cp]
+    end
+
+    test "marks the cache_messages position and ignores one out of range" do
+      result =
+        Converse.format_request("anthropic.claude", cached_context(),
+          prompt_cache: true,
+          cache_messages: 1
+        )
+
+      [_hello, hi, _weather] = result["messages"]
+      assert hi["content"] == [%{"text" => "Hi"}, @cp]
+
+      result =
+        Converse.format_request("anthropic.claude", cached_context(),
+          prompt_cache: true,
+          cache_messages: 7
+        )
+
+      refute Enum.any?(
+               result["messages"],
+               &match?(%{"cachePoint" => _}, List.last(&1["content"]))
+             )
+    end
+
+    test "rejects an unsupported cache_control ttl" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{
+            role: :user,
+            content: [ContentPart.text("Hi", %{cache_control: %{ttl: "30m"}})]
+          }
+        ]
+      }
+
+      assert_raise ReqLLM.Error.Invalid.Parameter, ~r/ttl/, fn ->
+        Converse.format_request("anthropic.claude", context, [])
+      end
+    end
+
+    test "rejects a 1h checkpoint after a 5m one" do
+      explicit_only = %ReqLLM.Context{
+        messages: [
+          %Message{role: :system, content: [ContentPart.text("Stable", %{cache_control: %{}})]},
+          %Message{role: :user, content: [ContentPart.text("Hi", %{cache_control: %{ttl: "1h"}})]}
+        ]
+      }
+
+      automatic_then_explicit = %ReqLLM.Context{
+        messages: [
+          %Message{
+            role: :system,
+            content: [ContentPart.text("Stable", %{cache_control: %{ttl: "1h"}})]
+          },
+          %Message{role: :user, content: "Hi"}
+        ]
+      }
+
+      assert_raise ReqLLM.Error.Invalid.Parameter, ~r/1h/, fn ->
+        Converse.format_request("anthropic.claude", explicit_only, [])
+      end
+
+      assert_raise ReqLLM.Error.Invalid.Parameter, ~r/1h/, fn ->
+        Converse.format_request("anthropic.claude", automatic_then_explicit,
+          tools: [tool()],
+          prompt_cache: true
+        )
+      end
+    end
+  end
+
+  describe "Anthropic request fields" do
+    @anthropic ReqLLM.Providers.AmazonBedrock.Anthropic
+    @meta ReqLLM.Providers.AmazonBedrock.Meta
+
+    test "caller additional fields win over top_k and anthropic_beta" do
+      context = %ReqLLM.Context{messages: [%Message{role: :user, content: "Hi"}]}
+
+      result =
+        Converse.format_request("anthropic.claude", context,
+          formatter_module: @anthropic,
+          top_k: 5,
+          provider_options: [
+            anthropic_beta: ["a"],
+            additional_model_request_fields: %{
+              top_k: 7,
+              anthropic_beta: ["b"],
+              thinking: %{type: "enabled"}
+            }
+          ]
+        )
+
+      assert result["additionalModelRequestFields"] == %{
+               "top_k" => 7,
+               "anthropic_beta" => ["b"],
+               "thinking" => %{type: "enabled"}
+             }
+    end
+
+    test "Meta gets the caller fields and a normalized tool schema" do
+      context = %ReqLLM.Context{messages: [%Message{role: :user, content: "Hi"}]}
+
+      result =
+        Converse.format_request("meta.llama", context,
+          formatter_module: @meta,
+          tools: [tool()],
+          top_k: 5,
+          provider_options: [additional_model_request_fields: %{max_gen_len: 10}]
+        )
+
+      assert result["additionalModelRequestFields"] == %{"max_gen_len" => 10}
+
+      [%{"toolSpec" => %{"inputSchema" => %{"json" => schema}}}] = result["toolConfig"]["tools"]
+      refute Map.has_key?(schema, "additionalProperties")
+    end
+
+    test "omits toolChoice without tools and rejects unsupported choices" do
+      context = %ReqLLM.Context{messages: [%Message{role: :user, content: "Hi"}]}
+
+      result =
+        Converse.format_request("anthropic.claude", context,
+          formatter_module: @anthropic,
+          tool_choice: :auto
+        )
+
+      refute Map.has_key?(result, "toolConfig")
+
+      assert_raise ReqLLM.Error.Invalid.Parameter, fn ->
+        Converse.format_request("anthropic.claude", context,
+          formatter_module: @anthropic,
+          tools: [tool()],
+          tool_choice: :bogus
+        )
+      end
+    end
+
+    test "keeps tool result errors for Claude and Nova only" do
+      context = %ReqLLM.Context{
+        messages: [
+          %Message{role: :user, content: "Hi"},
+          %Message{
+            role: :assistant,
+            content: [],
+            tool_calls: [ReqLLM.ToolCall.new("call_1", "get_weather", "{}")]
+          },
+          %Message{
+            role: :tool,
+            tool_call_id: "call_1",
+            content: [ContentPart.text("boom")],
+            metadata: %{is_error: true}
+          }
+        ]
+      }
+
+      status = fn model_id, formatter ->
+        result = Converse.format_request(model_id, context, formatter_module: formatter)
+        [%{"toolResult" => tool_result}] = List.last(result["messages"])["content"]
+        tool_result["status"]
+      end
+
+      assert status.("anthropic.claude", @anthropic) == "error"
+      assert status.("us.amazon.nova-pro-v1:0", Converse) == "error"
+      assert status.("meta.llama", @meta) == nil
     end
   end
 end

@@ -98,6 +98,13 @@ defmodule ReqLLM.Usage.Normalize do
   defp safe_total_tokens(_input, _output), do: nil
 
   defp detect_input_includes_cached(usage) do
+    case Map.get(usage, :input_includes_cached, Map.get(usage, "input_includes_cached")) do
+      flag when is_boolean(flag) -> flag
+      _ -> detect_input_includes_cached_from_format(usage)
+    end
+  end
+
+  defp detect_input_includes_cached_from_format(usage) do
     has_openai_format =
       get_in(usage, ["prompt_tokens_details", "cached_tokens"]) != nil or
         get_in(usage, [:prompt_tokens_details, :cached_tokens]) != nil or
