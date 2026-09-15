@@ -171,6 +171,17 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       type: :boolean,
       doc: "Force use of Bedrock Converse API (default: auto-detect based on tools presence)"
     ],
+    tool_search: [
+      type: :map,
+      doc: """
+      Claude only. Enable Anthropic's server-side tool search so tools marked
+      `provider_options: [anthropic: [defer_loading: true]]` load on demand:
+      - `variant` - `:bm25` (natural-language queries, default) or `:regex`
+
+      Tool search is served by InvokeModel only, so the request stays on the
+      native API (Converse is not auto-selected).
+      """
+    ],
     additional_model_request_fields: [
       type: :map,
       doc:
@@ -1485,7 +1496,18 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
       nil ->
         has_tools = opts[:tools] != nil and opts[:tools] != []
-        requires_converse or is_fallback_to_converse or has_tools
+        has_tool_search = is_map(provider_option(opts, :tool_search))
+
+        cond do
+          requires_converse or is_fallback_to_converse ->
+            true
+
+          has_tool_search ->
+            false
+
+          true ->
+            has_tools
+        end
     end
   end
 

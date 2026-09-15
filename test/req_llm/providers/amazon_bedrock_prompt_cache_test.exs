@@ -135,6 +135,55 @@ defmodule ReqLLM.Providers.AmazonBedrockPromptCacheTest do
     end
   end
 
+  describe "tool search routing" do
+    defp deferred_tool do
+      Tool.new!(
+        name: "get_weather",
+        description: "Weather for a city",
+        parameter_schema: [city: [type: :string, required: true]],
+        callback: fn _ -> {:ok, "sunny"} end,
+        provider_options: [anthropic: [defer_loading: true]]
+      )
+    end
+
+    defp tool_search_bodies(context, opts) do
+      model =
+        ReqLLM.model!(%{provider: :amazon_bedrock, id: "us.anthropic.claude-sonnet-4-6"})
+
+      opts = [api_key: "test_key", tools: [deferred_tool()]] ++ opts
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+      {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+      assert get_api_type(request) == :native
+      assert stream.path =~ "/invoke-with-response-stream"
+
+      [request_body(request), Jason.decode!(stream.body)]
+    end
+
+    test "uses InvokeModel when tool search is enabled", %{context: context} do
+      for opts <- [[tool_search: %{}], [provider_options: [tool_search: %{}]]],
+          body <- tool_search_bodies(context, opts) do
+        assert [search, deferred] = body["tools"]
+        assert search["type"] == "tool_search_tool_bm25_20251119"
+        assert deferred["defer_loading"] == true
+      end
+    end
+
+    test "keeps caching on non-deferred tools through InvokeModel", %{context: context} do
+      for opts <- [
+            [provider_options: [tool_search: %{variant: :regex}, prompt_cache: true]],
+            [tool_search: %{variant: :regex}, anthropic_prompt_cache: true]
+          ],
+          body <- tool_search_bodies(context, opts) do
+        assert [search, deferred] = body["tools"]
+        assert search["type"] == "tool_search_tool_regex_20251119"
+        assert search["cache_control"] == %{"type" => "ephemeral"}
+        assert deferred["defer_loading"] == true
+        refute Map.has_key?(deferred, "cache_control")
+      end
+    end
+  end
+
   describe "Converse keeps what the InvokeModel request carried" do
     defp lookup_tool do
       Tool.new!(
