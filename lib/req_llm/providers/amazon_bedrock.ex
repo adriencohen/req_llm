@@ -155,7 +155,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       type: {:in, [:runtime, :mantle]},
       default: :runtime,
       doc:
-        "Bedrock endpoint the request goes to: bedrock-runtime (InvokeModel/Converse), or bedrock-mantle — the OpenAI Chat Completions API for most model families, the Anthropic Messages API for Claude"
+        "Bedrock endpoint the request goes to: bedrock-runtime (InvokeModel/Converse), or bedrock-mantle (Responses for response-shaped models, Chat Completions for other compatible models, Messages for Claude)"
     ],
     project: [
       type: :string,
@@ -165,7 +165,13 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     mantle_base_path: [
       type: {:in, ["/v1", "/openai/v1"]},
       doc:
-        "Base path of the Chat Completions route on bedrock-mantle. Default: `/openai/v1` for GPT-5, Gemma 4 and Grok models, `/v1` for every other family. Ignored for Claude and on bedrock-runtime"
+        "Base path of the OpenAI-compatible routes on bedrock-mantle. Default: `/openai/v1` for GPT-5, Gemma 4 and Grok models, `/v1` for every other family. Ignored for Claude and on bedrock-runtime"
+    ],
+    store: [
+      type: :boolean,
+      default: false,
+      doc:
+        "Store Mantle Responses input and output for later use. Defaults to false. Ignored on other routes"
     ],
     use_converse: [
       type: :boolean,
@@ -420,7 +426,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     use_converse = determine_use_converse(model_id, opts)
 
     {endpoint_base, formatter, model_family} =
-      route(endpoint, model_id, use_converse, opts[:stream] == true, opts)
+      route(endpoint, model, use_converse, opts[:stream] == true, opts)
 
     operation = opts[:operation] || :chat
     compat_opts = Keyword.put(opts, :use_converse, use_converse)
@@ -445,9 +451,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         :model_family,
         :use_converse,
         :operation,
+        :compiled_schema,
         :tools,
         :inference_profile_arn,
-        :endpoint
+        :endpoint,
+        :response_formatter
       ])
       |> Req.Request.merge_options(
         ReqLLM.Provider.Defaults.finch_option(request) ++
@@ -460,7 +468,9 @@ defmodule ReqLLM.Providers.AmazonBedrock do
             context: opts[:context],
             use_converse: use_converse,
             operation: opts[:operation],
-            tools: opts[:tools]
+            compiled_schema: opts[:compiled_schema],
+            tools: opts[:tools],
+            response_formatter: formatter
           ]
       )
 
@@ -584,7 +594,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     use_converse = determine_use_converse(model_id, translated_opts)
 
     {path, formatter, model_family} =
-      route(endpoint, model_id, use_converse, true, translated_opts)
+      route(endpoint, model, use_converse, true, translated_opts)
 
     translated_opts =
       translated_opts
@@ -716,12 +726,21 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   end
 
   @impl ReqLLM.Provider
+  def decode_stream_event(%{data: %{"choices" => _}} = event, model, state) do
+    model_id = model.provider_model_id || model.id
+    openai = %{model | id: model_id, provider: :openai}
+    {ReqLLM.Provider.Defaults.default_decode_stream_event(event, openai), state}
+  end
+
   def decode_stream_event(%{data: _} = event, model, state) do
     model_id = model.provider_model_id || model.id
 
-    case mantle_wire(model_id) do
+    case mantle_wire(model) do
       :messages ->
         ReqLLM.Providers.Anthropic.Response.decode_stream_event(event, model, state)
+
+      :responses ->
+        ReqLLM.Providers.AmazonBedrock.Responses.decode_stream_event(event, model, state)
 
       :chat_completions ->
         openai = %{model | id: model_id, provider: :openai}
@@ -1057,10 +1076,16 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   defp stream_accept(:mantle), do: "text/event-stream"
   defp stream_accept(:runtime), do: "application/vnd.amazon.eventstream"
 
-  defp route(:mantle, model_id, _use_converse, _stream?, opts) do
-    case mantle_wire(model_id) do
+  defp route(:mantle, model, _use_converse, _stream?, opts) do
+    model_id = request_model_id(model)
+
+    case mantle_wire(model) do
       :messages ->
         {"/anthropic/v1/messages", ReqLLM.Providers.AmazonBedrock.Anthropic, "anthropic"}
+
+      :responses ->
+        {mantle_base_path(model_id, opts) <> "/responses",
+         ReqLLM.Providers.AmazonBedrock.Responses, "openai"}
 
       :chat_completions ->
         {mantle_base_path(model_id, opts) <> "/chat/completions",
@@ -1068,7 +1093,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     end
   end
 
-  defp route(:runtime, model_id, true = _use_converse, stream?, opts) do
+  defp route(:runtime, model, true = _use_converse, stream?, opts) do
+    model_id = request_model_id(model)
     path_id = path_model_id(model_id, opts)
 
     path =
@@ -1089,7 +1115,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     {path, formatter, :converse}
   end
 
-  defp route(:runtime, model_id, false = _use_converse, stream?, opts) do
+  defp route(:runtime, model, false = _use_converse, stream?, opts) do
+    model_id = request_model_id(model)
     path_id = path_model_id(model_id, opts)
 
     path =
@@ -1101,9 +1128,49 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     {path, get_formatter_module(family), family}
   end
 
-  defp mantle_wire(model_id) do
-    if get_model_family(model_id) == "anthropic", do: :messages, else: :chat_completions
+  @doc false
+  def mantle_wire(model) do
+    model_id = request_model_id(model)
+
+    cond do
+      get_model_family(model_id) == "anthropic" -> :messages
+      mantle_responses_model?(model) -> :responses
+      true -> :chat_completions
+    end
   end
+
+  defp mantle_responses_model?(model) do
+    model_id = request_model_id(model)
+    openai_model_id = openai_model_id(model_id)
+
+    if String.starts_with?(openai_model_id, "gpt-oss") do
+      false
+    else
+      case provider_shape(model) do
+        "responses" -> true
+        "chat_completions" -> false
+        "chat" -> false
+        _ -> ReqLLM.Providers.OpenAI.AdapterHelpers.responses_model?(openai_model_id)
+      end
+    end
+  end
+
+  defp provider_shape(%LLMDB.Model{extra: extra}) when is_map(extra) do
+    case Map.get(extra, :provider) || Map.get(extra, "provider") do
+      provider when is_map(provider) -> Map.get(provider, :shape) || Map.get(provider, "shape")
+      _ -> nil
+    end
+  end
+
+  defp provider_shape(_), do: nil
+
+  defp openai_model_id(model_id) do
+    model_id
+    |> strip_region_prefix()
+    |> String.replace_prefix("openai.", "")
+  end
+
+  defp request_model_id(%LLMDB.Model{} = model), do: model.provider_model_id || model.id
 
   # Each model card states its bedrock-mantle base path:
   # https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html
@@ -1216,8 +1283,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     # reasoning effort, etc.) for free
     model_family = get_model_family(model.provider_model_id || model.id)
 
-    case model_family do
-      "anthropic" ->
+    cond do
+      model_family == "anthropic" ->
         # Delegate temperature/top_p translation to Anthropic provider
         {translated_opts, warnings} =
           ReqLLM.Providers.Anthropic.translate_options(operation, model, opts)
@@ -1227,10 +1294,18 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
         {translated_opts, warnings}
 
-      _ ->
+      endpoint(opts) == :mantle and mantle_responses_model?(model) ->
+        ReqLLM.Providers.OpenAI.translate_options(operation, as_openai_model(model), opts)
+
+      true ->
         # Other model families: no translation needed yet
         {opts, []}
     end
+  end
+
+  defp as_openai_model(%LLMDB.Model{} = model) do
+    model_id = request_model_id(model)
+    %{model | provider: :openai, id: openai_model_id(model_id), provider_model_id: nil}
   end
 
   @impl ReqLLM.Provider
@@ -1324,7 +1399,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       if req.options[:use_converse] do
         ReqLLM.Providers.AmazonBedrock.Converse
       else
-        get_formatter_module(req.options[:model_family])
+        req.options[:response_formatter] || get_formatter_module(req.options[:model_family])
       end
 
     parsed_body = ensure_parsed_body(resp.body)
