@@ -244,6 +244,10 @@ Text and PNG or JPEG image parts, in messages and system prompts. InvokeModel ha
 - **Works with Converse API** directly without custom formatter
 - **Example**: `amazon_bedrock:cohere.command-r-plus-v1:0`
 
+### Amazon Titan and Nova embeddings
+
+`ReqLLM.embed/3` supports `amazon.titan-embed-text-v2:0`, `amazon.titan-embed-text-v1`, `amazon.titan-embed-image-v1` (text input) and `amazon.nova-2-multimodal-embeddings-v1:0` (text input), one text per request. `dimensions` maps to each model's output length option except on Titan Text G1; `normalize` applies to Titan Text V2, `embedding_purpose` and `truncation_mode` to Nova, see the [Titan Text](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-titan-embed-text.html), [Titan Multimodal](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-titan-embed-mm.html) and [Nova](https://docs.aws.amazon.com/nova/latest/userguide/nova-embeddings.html) parameters.
+
 ### OpenAI OSS
 
 - **Smart routing**: Native `/invoke` for simple requests, `/converse` when tools present

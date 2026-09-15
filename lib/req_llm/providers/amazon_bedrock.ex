@@ -252,6 +252,18 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     inputs: [
       type: {:list, :map},
       doc: "List of mixed content parts for Cohere interleaved embeddings"
+    ],
+    normalize: [
+      type: :boolean,
+      doc: "Normalize the embedding vector (Amazon Titan Text Embeddings V2)"
+    ],
+    embedding_purpose: [
+      type: :string,
+      doc: "Intended use of the embedding, `GENERIC_INDEX` by default (Amazon Nova embeddings)"
+    ],
+    truncation_mode: [
+      type: :string,
+      doc: "Where to truncate text over the limit, `END` by default (Amazon Nova embeddings)"
     ]
   ]
 
@@ -264,6 +276,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   }
 
   @embedding_families %{
+    "amazon" => ReqLLM.Providers.AmazonBedrock.Amazon,
     "cohere" => ReqLLM.Providers.AmazonBedrock.Cohere
   }
 
@@ -515,9 +528,10 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         updated_request =
           request
           |> Map.put(:url, URI.parse(base_url <> "/model/#{path_id}/invoke"))
-          |> Req.Request.register_options([:model, :text, :operation, :model_family])
+          |> Req.Request.register_options([:model, :text, :operation, :model_family, :dimensions])
           |> Req.Request.merge_options(
             ReqLLM.Provider.Defaults.finch_option(request) ++
+              Keyword.take(processed_opts, [:dimensions]) ++
               [
                 base_url: base_url,
                 model: model_id,

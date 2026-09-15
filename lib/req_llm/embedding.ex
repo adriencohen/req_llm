@@ -127,7 +127,7 @@ defmodule ReqLLM.Embedding do
 
   # Fallback detection for embedding models when LLMDB capabilities metadata is missing/null.
   defp embedding_model_id?(model_id) when is_binary(model_id) do
-    String.contains?(model_id, "embedding")
+    String.contains?(model_id, "embed")
   end
 
   defp embedding_capable_model?(%Model{} = model) do
@@ -136,7 +136,8 @@ defmodule ReqLLM.Embedding do
 
     model_string in get_embedding_models() or
       embeddings_enabled?(capabilities) or
-      embedding_model_id?(model.provider_model_id || model.id)
+      (capabilities[:embeddings] == nil and
+         embedding_model_id?(model.provider_model_id || model.id))
   end
 
   defp embeddings_enabled?(capabilities) when is_map(capabilities) do
