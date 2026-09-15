@@ -136,8 +136,7 @@ defmodule ReqLLM.Embedding do
 
     model_string in get_embedding_models() or
       embeddings_enabled?(capabilities) or
-      (capabilities[:embeddings] == nil and
-         embedding_model_id?(model.provider_model_id || model.id))
+      embedding_model_id?(model.provider_model_id || model.id)
   end
 
   defp embeddings_enabled?(capabilities) when is_map(capabilities) do

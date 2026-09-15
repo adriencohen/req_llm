@@ -531,7 +531,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
           |> Req.Request.register_options([:model, :text, :operation, :model_family, :dimensions])
           |> Req.Request.merge_options(
             ReqLLM.Provider.Defaults.finch_option(request) ++
-              Keyword.take(processed_opts, [:dimensions]) ++
+              embedding_dimensions_option(model_family, processed_opts) ++
               [
                 base_url: base_url,
                 model: model_id,
@@ -1187,6 +1187,9 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       Currently supported: #{Map.keys(@model_families) |> Enum.join(", ")} (and others via Converse API)
       """
   end
+
+  defp embedding_dimensions_option("amazon", opts), do: Keyword.take(opts, [:dimensions])
+  defp embedding_dimensions_option(_family, _opts), do: []
 
   defp get_embedding_formatter(model_id) do
     normalized_id = strip_region_prefix(model_id)
