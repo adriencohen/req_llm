@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- changelog -->
 
+## [v1.24.0](https://github.com/agentjido/req_llm/compare/v1.23.0...v1.24.0) (2026-09-17)
+
+
+
+
+### Features:
+
+* evaluation: add TypeSafe Jev evaluation API (#1022) by mikehostetler
+
+* lmstudio: add LM Studio provider (#1020) by Michael Mazurczak
+
+### Bug Fixes:
+
+* openai: keep replayed reasoning items at their own turn in Responses input (#1016) by Michael Mazurczak
+
 ## [v1.23.0](https://github.com/agentjido/req_llm/compare/v1.22.0...v1.23.0) (2026-09-15)
 
 
