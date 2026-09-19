@@ -857,7 +857,6 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     end
   end
 
-  # https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
   defp put_output_effort(opts, operation, effort, model) do
     if forced_tool_choice?(operation, opts[:tool_choice]) do
       opts
@@ -877,7 +876,6 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   defp forced_tool_choice?(_operation, %{type: "tool"}), do: true
   defp forced_tool_choice?(_operation, _tool_choice), do: false
 
-  # https://docs.aws.amazon.com/nova/latest/nova2-userguide/extended-thinking.html
   defp maybe_translate_nova_effort(opts, model, caller_opts) do
     if nova_effort_model?(model) do
       {effort, opts} = Keyword.pop(opts, :reasoning_effort)
@@ -1419,7 +1417,6 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     end
   end
 
-  # https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-openai.html
   defp translate_openai_effort(opts) do
     case Keyword.pop(opts, :reasoning_effort) do
       {effort, opts} when effort in [nil, :default] -> opts
