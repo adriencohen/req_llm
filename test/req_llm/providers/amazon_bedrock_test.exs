@@ -1163,6 +1163,91 @@ defmodule ReqLLM.Providers.AmazonBedrockTest do
       body = ReqLLM.Test.Helpers.json_body(request)
       refute Map.has_key?(body, "service_tier")
     end
+
+    test "keeps service_tier in the InvokeModel streaming body" do
+      {:ok, model} = ReqLLM.model("amazon-bedrock:anthropic.claude-3-haiku-20240307-v1:0")
+      context = Context.new([Context.user("Hello")])
+      opts = [access_key_id: "AKIATEST", secret_access_key: "secretTEST", service_tier: "flex"]
+
+      {:ok, finch_request} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+      assert finch_request.path =~ "/invoke-with-response-stream"
+      body = Jason.decode!(finch_request.body)
+      assert body["service_tier"] == "flex"
+      refute Map.has_key?(body, "serviceTier")
+    end
+
+    test "sends serviceTier on Converse" do
+      {:ok, model} = ReqLLM.model("amazon-bedrock:amazon.nova-lite-v1:0")
+      context = Context.new([Context.user("Hello")])
+      opts = [access_key_id: "AKIATEST", secret_access_key: "secretTEST", service_tier: "flex"]
+
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+
+      assert request.url.path =~ "/converse"
+      body = ReqLLM.Test.Helpers.json_body(request)
+      assert body["serviceTier"] == %{"type" => "flex"}
+      refute Map.has_key?(body, "service_tier")
+    end
+
+    test "omits default service tiers on both Converse transports" do
+      model = ReqLLM.model!("amazon_bedrock:amazon.nova-lite-v1:0")
+      context = Context.new([Context.user("Hello")])
+
+      for provider_options <- [[], [service_tier: "default"]] do
+        opts = [api_key: "test-api-key", provider_options: provider_options]
+
+        {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+        {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+        for body <- [Jason.decode!(request.body), Jason.decode!(stream.body)] do
+          refute Map.has_key?(body, "serviceTier")
+          refute Map.has_key?(body, "service_tier")
+        end
+      end
+    end
+
+    test "uses nested service tiers when explicitly routing Anthropic through Converse" do
+      model = ReqLLM.model!("amazon_bedrock:anthropic.claude-3-haiku-20240307-v1:0")
+      context = Context.new([Context.user("Hello")])
+
+      for provider_options <- [
+            [use_converse: true, service_tier: "priority"],
+            %{"use_converse" => true, "service_tier" => "priority"},
+            %{"amazon_bedrock" => %{"use_converse" => true, "service_tier" => "priority"}}
+          ] do
+        opts = [api_key: "test-api-key", provider_options: provider_options]
+
+        {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+        {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+        assert request.url.path =~ "/converse"
+        assert stream.path =~ "/converse-stream"
+
+        for body <- [Jason.decode!(request.body), Jason.decode!(stream.body)] do
+          assert body["serviceTier"] == %{"type" => "priority"}
+          refute Map.has_key?(body, "service_tier")
+        end
+      end
+    end
+
+    test "sends serviceTier on ConverseStream" do
+      {:ok, model} = ReqLLM.model("amazon-bedrock:amazon.nova-lite-v1:0")
+      context = Context.new([Context.user("Hello")])
+
+      opts = [
+        access_key_id: "AKIATEST",
+        secret_access_key: "secretTEST",
+        service_tier: "reserved"
+      ]
+
+      {:ok, finch_request} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+      assert finch_request.path =~ "/converse-stream"
+      body = Jason.decode!(finch_request.body)
+      assert body["serviceTier"] == %{"type" => "reserved"}
+      refute Map.has_key?(body, "service_tier")
+    end
   end
 
   describe "anthropic_beta parameter" do
@@ -1668,6 +1753,28 @@ defmodule ReqLLM.Providers.AmazonBedrockTest do
 
       assert body["max_tokens"] == 400
       refute Map.has_key?(body, "max_completion_tokens")
+    end
+
+    test "keeps a top-level service_tier on both Mantle transports", %{
+      context: context,
+      opts: opts,
+      gpt_oss: model
+    } do
+      opts = Keyword.put(opts, :service_tier, "flex")
+
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+      body = Jason.decode!(request.body)
+
+      assert request.url.path == "/v1/chat/completions"
+      assert body["service_tier"] == "flex"
+      refute Map.has_key?(body, "serviceTier")
+
+      {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+      body = Jason.decode!(stream.body)
+
+      assert stream.path == "/v1/chat/completions"
+      assert body["service_tier"] == "flex"
+      refute Map.has_key?(body, "serviceTier")
     end
 
     test "mantle_base_path overrides the base picked from the model id", %{
