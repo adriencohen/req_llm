@@ -676,6 +676,10 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   end
 
   @impl ReqLLM.Provider
+  def decode_stream_event(%{exception: type, payload: payload}, _model) do
+    [stream_exception_chunk(type, payload)]
+  end
+
   def decode_stream_event(%{data: _} = event, model) do
     {chunks, _state} = decode_stream_event(event, model, init_stream_state(model))
     chunks
@@ -710,6 +714,10 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   end
 
   @impl ReqLLM.Provider
+  def decode_stream_event(%{exception: type, payload: payload}, _model, state) do
+    {[stream_exception_chunk(type, payload)], state}
+  end
+
   def decode_stream_event(%{data: %{"choices" => _}} = event, model, state) do
     model_id = model.provider_model_id || model.id
     openai = %{model | id: model_id, provider: :openai}
@@ -772,6 +780,17 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   end
 
   defp guardrail_stream_chunks(_event), do: []
+
+  defp stream_exception_chunk(type, payload) do
+    error =
+      ReqLLM.Error.API.Request.exception(
+        reason: payload["message"],
+        response_body: payload,
+        provider_code: type
+      )
+
+    ReqLLM.StreamChunk.meta(%{finish_reason: :error, error: error, terminal?: true})
+  end
 
   @impl ReqLLM.Provider
   def flush_stream_state(model, state) do

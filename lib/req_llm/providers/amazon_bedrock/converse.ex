@@ -1405,8 +1405,11 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   defp map_stop_reason("end_turn"), do: :stop
   defp map_stop_reason("tool_use"), do: :tool_calls
   defp map_stop_reason("max_tokens"), do: :length
+  defp map_stop_reason("model_context_window_exceeded"), do: :length
   defp map_stop_reason("stop_sequence"), do: :stop
   defp map_stop_reason("content_filtered"), do: :content_filter
   defp map_stop_reason("guardrail_intervened"), do: :content_filter
-  defp map_stop_reason(_), do: :stop
+  defp map_stop_reason("malformed_model_output"), do: :error
+  defp map_stop_reason("malformed_tool_use"), do: :error
+  defp map_stop_reason(_), do: :unknown
 end
