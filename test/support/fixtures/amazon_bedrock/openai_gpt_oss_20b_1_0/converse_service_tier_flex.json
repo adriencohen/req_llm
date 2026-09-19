@@ -1,0 +1,103 @@
+{
+  "model_spec": "amazon_bedrock:openai.gpt-oss-20b-1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJpbmZlcmVuY2VDb25maWciOnsibWF4VG9rZW5zIjo0MDB9LCJtZXNzYWdlcyI6W3siY29udGVudCI6W3sidGV4dCI6IlNheSBoaSBpbiB0d28gd29yZHMuIn1dLCJyb2xlIjoidXNlciJ9XSwic2VydmljZVRpZXIiOnsidHlwZSI6ImZsZXgifX0="
+    },
+    "canonical_json": {
+      "inferenceConfig": {
+        "maxTokens": 400
+      },
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "Say hi in two words."
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "serviceTier": {
+        "type": "flex"
+      }
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.us-east-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.4"
+      ],
+      "x-amz-content-sha256": [
+        "54aa35ac29d22e97153803e7cb2c4e98acb50a30eea726fb4fe466c2db7d441f"
+      ],
+      "x-amz-date": [
+        "20260919T092409Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/openai.gpt-oss-20b-1:0/converse"
+  },
+  "response": {
+    "body": {
+      "metrics": {
+        "latencyMs": 1133
+      },
+      "output": {
+        "message": {
+          "content": [
+            {
+              "reasoningContent": {
+                "reasoningText": {
+                  "text": "The user: \"Say hi in two words.\" They want a response in two words. Likely \"Hello there\" or \"Hey there\". Two words: \"Hi there\". \"Hello friend\". The requirement: \"Say hi in two words.\" Probably the simplest: \"Hello world\". But world is a greeting? Maybe specifically \"Hey there\". We'll respond with exactly two words. We cannot add extra. So answer: \"Hello there\". That is two words. Or \"Hi there\" is two words too. But maybe \"Hello friend\" but that might be ambiguous. \"Hey buddy\". Let's choose \"Hello there\". Ensure only two words. No punctuation? Probably punctuation is okay but still two words. We'll output exactly those two words."
+                }
+              }
+            },
+            {
+              "text": "Hello there"
+            }
+          ],
+          "role": "assistant"
+        }
+      },
+      "serviceTier": {
+        "type": "flex"
+      },
+      "stopReason": "end_turn",
+      "usage": {
+        "inputTokens": 73,
+        "outputTokens": 162,
+        "serverToolUsage": {},
+        "totalTokens": 235
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "959"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Sat, 19 Sep 2026 09:24:10 GMT"
+      ],
+      "x-amzn-requestid": [
+        "771f0449-f4eb-4015-a0ab-0000b8b12496"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}
