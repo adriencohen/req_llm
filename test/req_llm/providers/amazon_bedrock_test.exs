@@ -1079,6 +1079,151 @@ defmodule ReqLLM.Providers.AmazonBedrockTest do
     end
   end
 
+  describe "reasoning_effort" do
+    setup do
+      opts = [access_key_id: "AKIATEST", secret_access_key: "secretTEST", region: "us-east-1"]
+      {:ok, context: Context.new([Context.user("Hello")]), opts: opts}
+    end
+
+    defp effort_bodies(model_spec, context, opts) do
+      model = ReqLLM.model!(model_spec)
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+      {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+      [Jason.decode!(request.body), Jason.decode!(stream.body)]
+    end
+
+    test "adaptive Claude sends the native Anthropic effort on InvokeModel and Mantle", %{
+      context: context,
+      opts: opts
+    } do
+      opts = Keyword.put(opts, :reasoning_effort, :xhigh)
+      mantle = Keyword.put(opts, :provider_options, endpoint: :mantle)
+      with_budget = Keyword.put(opts, :reasoning_token_budget, 3000)
+      model = "amazon-bedrock:anthropic.claude-opus-4-8"
+
+      for body <-
+            effort_bodies(model, context, opts) ++
+              effort_bodies(model, context, mantle) ++
+              effort_bodies(model, context, with_budget) do
+        assert body["thinking"] == %{"type" => "adaptive", "display" => "summarized"}
+        assert body["output_config"] == %{"effort" => "xhigh"}
+      end
+    end
+
+    test "adaptive Claude sends the effort in Converse additionalModelRequestFields", %{
+      context: context,
+      opts: opts
+    } do
+      opts = opts ++ [reasoning_effort: :low, provider_options: [use_converse: true]]
+
+      for body <- effort_bodies("amazon-bedrock:anthropic.claude-opus-4-8", context, opts) do
+        assert body["additionalModelRequestFields"] == %{
+                 "thinking" => %{"type" => "adaptive", "display" => "summarized"},
+                 "output_config" => %{"effort" => "low"}
+               }
+      end
+    end
+
+    test "adaptive Claude drops the effort with thinking when a tool is forced", %{
+      context: context,
+      opts: opts
+    } do
+      tool =
+        ReqLLM.Tool.new!(
+          name: "lookup",
+          description: "Look something up",
+          callback: fn _args -> {:ok, "done"} end
+        )
+
+      opts =
+        opts ++
+          [reasoning_effort: :low, tools: [tool], tool_choice: %{type: "tool", name: "lookup"}]
+
+      native = Keyword.put(opts, :provider_options, use_converse: false)
+      mantle = Keyword.put(opts, :provider_options, endpoint: :mantle)
+      model = "amazon-bedrock:anthropic.claude-opus-4-8"
+
+      for body <- effort_bodies(model, context, opts) do
+        refute Map.has_key?(body, "additionalModelRequestFields")
+      end
+
+      for body <- effort_bodies(model, context, native) ++ effort_bodies(model, context, mantle) do
+        refute Map.has_key?(body, "thinking")
+        refute Map.has_key?(body, "output_config")
+      end
+    end
+
+    test "Claude keeps a caller's output_config effort when thinking is cleaned up", %{
+      context: context,
+      opts: opts
+    } do
+      opts =
+        opts ++
+          [
+            temperature: 0.3,
+            provider_options: [
+              use_converse: true,
+              additional_model_request_fields: %{output_config: %{effort: "low"}}
+            ]
+          ]
+
+      for body <-
+            effort_bodies("amazon-bedrock:anthropic.claude-opus-4-5-20251101-v1:0", context, opts) do
+        assert body["additionalModelRequestFields"] == %{"output_config" => %{"effort" => "low"}}
+      end
+    end
+
+    test "gpt-oss sends reasoning_effort in the body and in Converse additionalModelRequestFields",
+         %{context: context, opts: opts} do
+      opts = Keyword.put(opts, :reasoning_effort, :high)
+      converse = Keyword.put(opts, :provider_options, use_converse: true)
+      mantle = Keyword.put(opts, :provider_options, endpoint: :mantle)
+      model = "amazon-bedrock:openai.gpt-oss-120b-1:0"
+
+      for body <- effort_bodies(model, context, opts) ++ effort_bodies(model, context, mantle) do
+        assert body["reasoning_effort"] == "high"
+      end
+
+      for body <- effort_bodies(model, context, converse) do
+        assert body["additionalModelRequestFields"] == %{"reasoning_effort" => "high"}
+      end
+    end
+
+    test "Nova 2 sends reasoningConfig in Converse additionalModelRequestFields and at the top level on InvokeModel",
+         %{context: context, opts: opts} do
+      opts = Keyword.put(opts, :reasoning_effort, :low)
+      invoke = Keyword.put(opts, :provider_options, use_converse: false)
+      model = "amazon-bedrock:amazon.nova-2-lite-v1:0"
+      config = %{"type" => "enabled", "maxReasoningEffort" => "low"}
+
+      for body <- effort_bodies(model, context, opts) do
+        assert body["additionalModelRequestFields"] == %{"reasoningConfig" => config}
+      end
+
+      for body <- effort_bodies(model, context, invoke) do
+        assert body["reasoningConfig"] == config
+        refute Map.has_key?(body, "additionalModelRequestFields")
+      end
+    end
+
+    test "Nova 2 at high effort leaves out only the default max_tokens", %{
+      context: context,
+      opts: opts
+    } do
+      opts = Keyword.put(opts, :reasoning_effort, :high)
+      model = "amazon-bedrock:amazon.nova-2-lite-v1:0"
+
+      for body <- effort_bodies(model, context, opts) do
+        refute Map.has_key?(body, "inferenceConfig")
+      end
+
+      for body <- effort_bodies(model, context, Keyword.put(opts, :max_tokens, 500)) do
+        assert body["inferenceConfig"] == %{"maxTokens" => 500}
+      end
+    end
+  end
+
   describe "service_tier parameter" do
     test "includes service_tier in request body when specified" do
       System.put_env("AWS_ACCESS_KEY_ID", "AKIATEST")

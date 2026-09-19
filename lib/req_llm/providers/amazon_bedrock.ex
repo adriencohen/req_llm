@@ -413,6 +413,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         operation
       )
 
+    opts = maybe_translate_nova_effort(opts, model, other_opts)
+
     region = extract_region(aws_creds)
     endpoint = endpoint(opts)
     base_url = "https://#{host(endpoint, region)}"
@@ -440,7 +442,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
         compat_opts
       )
 
-    opts = Keyword.put(opts, :context, context)
+    opts = Keyword.put(compat_opts, :context, context)
 
     updated_request =
       request
@@ -594,6 +596,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       translated_opts
       |> Keyword.put(:use_converse, use_converse)
       |> maybe_clean_thinking_after_translation(get_model_family(model_id), operation)
+      |> maybe_translate_nova_effort(model, other_opts)
 
     context =
       ReqLLM.ToolCallIdCompat.apply_context(
@@ -816,15 +819,12 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
   # Note: pre_validate_options is not yet a formal Provider callback
   # It's called by Options.process/4 if the provider exports it
-  def pre_validate_options(_operation, model, opts) do
-    # Handle reasoning parameters for Claude models on Bedrock
-    opts = maybe_translate_reasoning_params(model, opts)
+  def pre_validate_options(operation, model, opts) do
+    opts = maybe_translate_reasoning_params(operation, model, opts)
     {opts, []}
   end
 
-  # Translate reasoning_effort/reasoning_token_budget to Bedrock additionalModelRequestFields
-  # Only for Claude models that support extended thinking
-  defp maybe_translate_reasoning_params(model, opts) do
+  defp maybe_translate_reasoning_params(operation, model, opts) do
     model_id = model.provider_model_id || model.id
 
     is_claude = String.contains?(model_id, "anthropic.claude")
@@ -837,6 +837,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       {reasoning_budget, opts} = Keyword.pop(opts, :reasoning_token_budget)
 
       cond do
+        reasoning_effort not in [nil, :none] and ModelHelpers.adaptive_thinking_required?(model) ->
+          opts
+          |> PlatformReasoning.add_reasoning_to_additional_fields(nil, model)
+          |> put_output_effort(operation, reasoning_effort, model)
+
         reasoning_budget && is_integer(reasoning_budget) ->
           PlatformReasoning.add_reasoning_to_additional_fields(opts, reasoning_budget, model)
 
@@ -850,6 +855,77 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     else
       opts
     end
+  end
+
+  # https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
+  defp put_output_effort(opts, operation, effort, model) do
+    if forced_tool_choice?(operation, opts[:tool_choice]) do
+      opts
+    else
+      value =
+        effort
+        |> ReqLLM.Provider.Reasoning.normalize_effort()
+        |> Anthropic.adaptive_effort(ModelHelpers.hosted_anthropic_model(model) || model)
+
+      update_additional_model_request_fields(opts, fn fields ->
+        Map.update(fields, :output_config, %{effort: value}, &Map.put(&1, :effort, value))
+      end)
+    end
+  end
+
+  defp forced_tool_choice?(:object, _tool_choice), do: true
+  defp forced_tool_choice?(_operation, %{type: "tool"}), do: true
+  defp forced_tool_choice?(_operation, _tool_choice), do: false
+
+  # https://docs.aws.amazon.com/nova/latest/nova2-userguide/extended-thinking.html
+  defp maybe_translate_nova_effort(opts, model, caller_opts) do
+    if nova_effort_model?(model) do
+      {effort, opts} = Keyword.pop(opts, :reasoning_effort)
+      put_reasoning_config(opts, effort, caller_opts)
+    else
+      opts
+    end
+  end
+
+  defp nova_effort_model?(model) do
+    get_model_family(request_model_id(model)) == "amazon" and effort_reasoning_option?(model)
+  end
+
+  defp effort_reasoning_option?(%LLMDB.Model{extra: extra}) when is_map(extra) do
+    options = Map.get(extra, :reasoning_options) || Map.get(extra, "reasoning_options") || []
+    Enum.any?(options, &((Map.get(&1, :type) || Map.get(&1, "type")) == "effort"))
+  end
+
+  defp effort_reasoning_option?(_model), do: false
+
+  defp put_reasoning_config(opts, effort, _caller_opts) when effort in [nil, :none, :default],
+    do: opts
+
+  defp put_reasoning_config(opts, effort, caller_opts) do
+    config = %{type: "enabled", maxReasoningEffort: to_string(effort)}
+
+    opts
+    |> update_additional_model_request_fields(&Map.put(&1, :reasoningConfig, config))
+    |> omit_default_max_tokens(effort, caller_opts)
+  end
+
+  defp omit_default_max_tokens(opts, :high, caller_opts) do
+    if Keyword.has_key?(caller_opts, :max_tokens),
+      do: opts,
+      else: Keyword.delete(opts, :max_tokens)
+  end
+
+  defp omit_default_max_tokens(opts, _effort, _caller_opts), do: opts
+
+  defp update_additional_model_request_fields(opts, fun) do
+    provider_opts = Keyword.get(opts, :provider_options, [])
+    fields = fun.(Keyword.get(provider_opts, :additional_model_request_fields, %{}))
+
+    Keyword.put(
+      opts,
+      :provider_options,
+      Keyword.put(provider_opts, :additional_model_request_fields, fields)
+    )
   end
 
   # Detect whether a streaming event is from the Converse API (camelCase keys)
@@ -1334,9 +1410,20 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       endpoint(opts) == :mantle and mantle_responses_model?(model) ->
         ReqLLM.Providers.OpenAI.translate_options(operation, as_openai_model(model), opts)
 
+      model_family == "openai" ->
+        {translate_openai_effort(opts), []}
+
       true ->
         # Other model families: no translation needed yet
         {opts, []}
+    end
+  end
+
+  # https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-openai.html
+  defp translate_openai_effort(opts) do
+    case Keyword.pop(opts, :reasoning_effort) do
+      {effort, opts} when effort in [nil, :default] -> opts
+      {effort, opts} -> Keyword.put(opts, :reasoning_effort, to_string(effort))
     end
   end
 

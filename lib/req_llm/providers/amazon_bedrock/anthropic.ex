@@ -97,9 +97,13 @@ defmodule ReqLLM.Providers.AmazonBedrock.Anthropic do
     |> AdapterHelpers.maybe_add_param(:top_k, opts[:top_k])
     |> AdapterHelpers.maybe_add_param(:stop_sequences, opts[:stop_sequences])
     |> AdapterHelpers.maybe_add_thinking(opts)
+    |> AdapterHelpers.maybe_add_param(:output_config, output_config(opts))
     |> maybe_add_tools(opts)
     |> Anthropic.maybe_apply_prompt_caching(PromptCache.to_anthropic_opts(opts))
   end
+
+  defp output_config(opts),
+    do: get_in(opts, [:provider_options, :additional_model_request_fields, :output_config])
 
   defp maybe_add_anthropic_beta(body, opts) do
     case anthropic_betas(opts) do

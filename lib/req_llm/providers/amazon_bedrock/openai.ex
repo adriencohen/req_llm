@@ -76,7 +76,14 @@ defmodule ReqLLM.Providers.AmazonBedrock.OpenAI do
         body
       end
 
-    updated_body
+    put_reasoning_effort(updated_body, opts)
+  end
+
+  defp put_reasoning_effort(body, opts) do
+    case {opts[:formatter_module], opts[:reasoning_effort]} do
+      {__MODULE__, effort} when is_binary(effort) -> Map.put(body, :reasoning_effort, effort)
+      _other -> body
+    end
   end
 
   defp strip_name_from_tool_messages(messages) when is_list(messages) do

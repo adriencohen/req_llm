@@ -1,0 +1,98 @@
+{
+  "model_spec": "amazon_bedrock:openai.gpt-oss-20b-1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJtYXhfdG9rZW5zIjo0MDk2LCJtZXNzYWdlcyI6W3siY29udGVudCI6IldoYXQgaXMgMTcgdGltZXMgMjM/IEFuc3dlciB3aXRoIHRoZSBudW1iZXIgb25seS4iLCJyb2xlIjoidXNlciJ9XSwibW9kZWwiOiJvcGVuYWkuZ3B0LW9zcy0yMGItMTowIiwicmVhc29uaW5nX2VmZm9ydCI6ImhpZ2giLCJzdHJlYW0iOmZhbHNlfQ=="
+    },
+    "canonical_json": {
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "content": "What is 17 times 23? Answer with the number only.",
+          "role": "user"
+        }
+      ],
+      "model": "openai.gpt-oss-20b-1:0",
+      "reasoning_effort": "high",
+      "stream": false
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.us-east-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.4"
+      ],
+      "x-amz-content-sha256": [
+        "3b5ae021ef6fb289cc14eb9a60a2f11df449791b06ca535571755495c94cf9f1"
+      ],
+      "x-amz-date": [
+        "20260919T092343Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/openai.gpt-oss-20b-1:0/invoke"
+  },
+  "response": {
+    "body": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "<reasoning>The user asks: \"What is 17 times 23? Answer with the number only.\" We need to multiply 17 by 23.\n\nWe can do: 17 * 23. 17*20 = 340, 17*3 = 51, sum = 391. So 391. Should respond with 391.\n\nWe must output only the number. Format: just \"391\". Done.</reasoning>391",
+            "refusal": null,
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1789809824,
+      "id": "chatcmpl-8d624ed9-65c1-419f-8747-f8544a3ce4b9",
+      "model": "openai.gpt-oss-20b-1:0",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "usage": {
+        "completion_tokens": 96,
+        "prompt_tokens": 81,
+        "total_tokens": 177
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "631"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Sat, 19 Sep 2026 09:23:45 GMT"
+      ],
+      "x-amzn-bedrock-input-token-count": [
+        "81"
+      ],
+      "x-amzn-bedrock-invocation-latency": [
+        "1170"
+      ],
+      "x-amzn-bedrock-output-token-count": [
+        "96"
+      ],
+      "x-amzn-requestid": [
+        "6fa086d2-44bc-4b3d-b95c-99f795e5095e"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

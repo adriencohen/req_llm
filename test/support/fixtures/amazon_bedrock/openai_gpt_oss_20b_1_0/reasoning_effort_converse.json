@@ -1,0 +1,100 @@
+{
+  "model_spec": "amazon_bedrock:openai.gpt-oss-20b-1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJhZGRpdGlvbmFsTW9kZWxSZXF1ZXN0RmllbGRzIjp7InJlYXNvbmluZ19lZmZvcnQiOiJoaWdoIn0sImluZmVyZW5jZUNvbmZpZyI6eyJtYXhUb2tlbnMiOjQwOTZ9LCJtZXNzYWdlcyI6W3siY29udGVudCI6W3sidGV4dCI6IldoYXQgaXMgMTcgdGltZXMgMjM/IEFuc3dlciB3aXRoIHRoZSBudW1iZXIgb25seS4ifV0sInJvbGUiOiJ1c2VyIn1dfQ=="
+    },
+    "canonical_json": {
+      "additionalModelRequestFields": {
+        "reasoning_effort": "high"
+      },
+      "inferenceConfig": {
+        "maxTokens": 4096
+      },
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "What is 17 times 23? Answer with the number only."
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.us-east-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.4"
+      ],
+      "x-amz-content-sha256": [
+        "6d44883b52773508c6a347e45da1aeb1eb354970feb1b925d39d92e81c34d53b"
+      ],
+      "x-amz-date": [
+        "20260919T092342Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/openai.gpt-oss-20b-1:0/converse"
+  },
+  "response": {
+    "body": {
+      "metrics": {
+        "latencyMs": 637
+      },
+      "output": {
+        "message": {
+          "content": [
+            {
+              "reasoningContent": {
+                "reasoningText": {
+                  "text": "The user asks: \"What is 17 times 23? Answer with the number only.\" So 17 x 23 = 391? Let's calculate: 20 x 17 = 340. 3 x 17 = 51. 340 + 51 = 391. Yes. So answer: 391. Ensure just the number, no trailing period, no explanation. According to instructions: output number only. So \"391\"."
+                }
+              }
+            },
+            {
+              "text": "391"
+            }
+          ],
+          "role": "assistant"
+        }
+      },
+      "stopReason": "end_turn",
+      "usage": {
+        "inputTokens": 81,
+        "outputTokens": 102,
+        "serverToolUsage": {},
+        "totalTokens": 183
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "545"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Sat, 19 Sep 2026 09:23:43 GMT"
+      ],
+      "x-amzn-requestid": [
+        "55dd300e-318f-418c-952b-749d9d3b747c"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

@@ -769,11 +769,18 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
   end
 
   defp add_additional_fields(request, opts) do
-    case Map.merge(anthropic_fields(opts), caller_fields(opts)) do
-      fields when map_size(fields) == 0 -> request
-      fields -> Map.put(request, "additionalModelRequestFields", fields)
-    end
+    fields = Map.merge(family_fields(opts[:formatter_module], opts), caller_fields(opts))
+    put_additional_fields(request, fields, opts[:use_converse])
   end
+
+  defp put_additional_fields(request, fields, _use_converse) when map_size(fields) == 0,
+    do: request
+
+  # https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html
+  defp put_additional_fields(request, fields, false), do: Map.merge(request, fields)
+
+  defp put_additional_fields(request, fields, _use_converse),
+    do: Map.put(request, "additionalModelRequestFields", fields)
 
   defp caller_fields(opts) do
     fields =
@@ -783,15 +790,16 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
     Map.new(fields, fn {key, value} -> {to_string(key), value} end)
   end
 
-  defp anthropic_fields(opts) do
-    if opts[:formatter_module] == ReqLLM.Providers.AmazonBedrock.Anthropic do
-      %{}
-      |> put_option("top_k", opts[:top_k])
-      |> put_option("anthropic_beta", get_in(opts, [:provider_options, :anthropic_beta]))
-    else
-      %{}
-    end
+  defp family_fields(ReqLLM.Providers.AmazonBedrock.Anthropic, opts) do
+    %{}
+    |> put_option("top_k", opts[:top_k])
+    |> put_option("anthropic_beta", get_in(opts, [:provider_options, :anthropic_beta]))
   end
+
+  defp family_fields(ReqLLM.Providers.AmazonBedrock.OpenAI, opts),
+    do: put_option(%{}, "reasoning_effort", opts[:reasoning_effort])
+
+  defp family_fields(_formatter_module, _opts), do: %{}
 
   defp add_guardrail_config(request, opts) do
     opts = Keyword.merge(opts, opts[:provider_options] || [])

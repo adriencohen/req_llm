@@ -1,0 +1,103 @@
+{
+  "model_spec": "amazon_bedrock:eu.amazon.nova-2-lite-v1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJhZGRpdGlvbmFsTW9kZWxSZXF1ZXN0RmllbGRzIjp7InJlYXNvbmluZ0NvbmZpZyI6eyJtYXhSZWFzb25pbmdFZmZvcnQiOiJsb3ciLCJ0eXBlIjoiZW5hYmxlZCJ9fSwiaW5mZXJlbmNlQ29uZmlnIjp7Im1heFRva2VucyI6NDA5Nn0sIm1lc3NhZ2VzIjpbeyJjb250ZW50IjpbeyJ0ZXh0IjoiV2hhdCBpcyAxNyB0aW1lcyAyMz8gQW5zd2VyIHdpdGggdGhlIG51bWJlciBvbmx5LiJ9XSwicm9sZSI6InVzZXIifV19"
+    },
+    "canonical_json": {
+      "additionalModelRequestFields": {
+        "reasoningConfig": {
+          "maxReasoningEffort": "low",
+          "type": "enabled"
+        }
+      },
+      "inferenceConfig": {
+        "maxTokens": 4096
+      },
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "What is 17 times 23? Answer with the number only."
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.eu-west-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.4"
+      ],
+      "x-amz-content-sha256": [
+        "0d4d8164616d1bf1b47e29e919753f9f71ac4177858b3abe8a697ba265f9ea8a"
+      ],
+      "x-amz-date": [
+        "20260919T093042Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/model/eu.amazon.nova-2-lite-v1:0/converse"
+  },
+  "response": {
+    "body": {
+      "metrics": {
+        "latencyMs": 1077
+      },
+      "output": {
+        "message": {
+          "content": [
+            {
+              "reasoningContent": {
+                "reasoningText": {
+                  "text": "[REDACTED]."
+                }
+              }
+            },
+            {
+              "text": "391"
+            }
+          ],
+          "role": "assistant"
+        }
+      },
+      "stopReason": "end_turn",
+      "usage": {
+        "inputTokens": 110,
+        "outputTokens": 164,
+        "serverToolUsage": {},
+        "totalTokens": 274
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "271"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Sat, 19 Sep 2026 09:30:43 GMT"
+      ],
+      "x-amzn-requestid": [
+        "938bdb1a-ca97-4beb-ae0e-f50ecadc64c1"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

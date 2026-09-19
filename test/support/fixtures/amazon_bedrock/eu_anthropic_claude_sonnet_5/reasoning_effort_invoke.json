@@ -1,0 +1,115 @@
+{
+  "model_spec": "amazon_bedrock:eu.anthropic.claude-sonnet-5",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJhbnRocm9waWNfdmVyc2lvbiI6ImJlZHJvY2stMjAyMy0wNS0zMSIsIm1heF90b2tlbnMiOjEwMjQsIm1lc3NhZ2VzIjpbeyJjb250ZW50IjoiV2hhdCBpcyAxNyB0aW1lcyAyMz8gQW5zd2VyIHdpdGggdGhlIG51bWJlciBvbmx5LiIsInJvbGUiOiJ1c2VyIn1dLCJvdXRwdXRfY29uZmlnIjp7ImVmZm9ydCI6ImxvdyJ9LCJ0aGlua2luZyI6eyJkaXNwbGF5Ijoic3VtbWFyaXplZCIsInR5cGUiOiJhZGFwdGl2ZSJ9fQ=="
+    },
+    "canonical_json": {
+      "anthropic_version": "bedrock-2023-05-31",
+      "max_tokens": 1024,
+      "messages": [
+        {
+          "content": "What is 17 times 23? Answer with the number only.",
+          "role": "user"
+        }
+      ],
+      "output_config": {
+        "effort": "low"
+      },
+      "thinking": {
+        "display": "summarized",
+        "type": "adaptive"
+      }
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.eu-west-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.4"
+      ],
+      "x-amz-content-sha256": [
+        "a7edd56d7bb19201a6801443d7883d91c8dfddc79b46579a88eda090af3cd484"
+      ],
+      "x-amz-date": [
+        "20260919T093040Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/model/eu.anthropic.claude-sonnet-5/invoke"
+  },
+  "response": {
+    "body": {
+      "container": null,
+      "content": [
+        {
+          "text": "391",
+          "type": "text"
+        }
+      ],
+      "id": "msg_bdrk_j5ulnhoikfzxgd7tnf6biqlvdhumhszinshapzzbha2zpewtdvoq",
+      "model": "claude-sonnet-5",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 23,
+        "output_tokens": 3,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard"
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "513"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Sat, 19 Sep 2026 09:30:42 GMT"
+      ],
+      "x-amzn-bedrock-cache-read-input-token-count": [
+        "0"
+      ],
+      "x-amzn-bedrock-cache-write-input-token-count": [
+        "0"
+      ],
+      "x-amzn-bedrock-input-token-count": [
+        "23"
+      ],
+      "x-amzn-bedrock-invocation-latency": [
+        "1613"
+      ],
+      "x-amzn-bedrock-output-token-count": [
+        "3"
+      ],
+      "x-amzn-requestid": [
+        "a541835c-c340-409d-914f-063476a525aa"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

@@ -1556,12 +1556,13 @@ defmodule ReqLLM.Providers.Anthropic do
   defp budget_to_effort(budget, _model) when budget >= @reasoning_budget_medium, do: "medium"
   defp budget_to_effort(_budget, _model), do: "low"
 
-  defp adaptive_effort(:minimal, _model), do: "low"
-  defp adaptive_effort(:low, _model), do: "low"
-  defp adaptive_effort(:medium, _model), do: "medium"
-  defp adaptive_effort(:high, _model), do: "high"
+  @doc false
+  def adaptive_effort(:minimal, _model), do: "low"
+  def adaptive_effort(:low, _model), do: "low"
+  def adaptive_effort(:medium, _model), do: "medium"
+  def adaptive_effort(:high, _model), do: "high"
 
-  defp adaptive_effort(:xhigh, model) do
+  def adaptive_effort(:xhigh, model) do
     cond do
       effort_supported?(model, :xhigh) -> "xhigh"
       effort_supported?(model, :max) -> "max"
@@ -1569,7 +1570,7 @@ defmodule ReqLLM.Providers.Anthropic do
     end
   end
 
-  defp adaptive_effort(:max, model) do
+  def adaptive_effort(:max, model) do
     cond do
       effort_supported?(model, :max) -> "max"
       effort_supported?(model, :xhigh) -> "xhigh"
@@ -1577,7 +1578,7 @@ defmodule ReqLLM.Providers.Anthropic do
     end
   end
 
-  defp adaptive_effort(:default, _model), do: "medium"
+  def adaptive_effort(:default, _model), do: "medium"
 
   defp effort_supported?(%LLMDB.Model{} = model, effort) do
     model_capability(model, [:reasoning, :effort, :values])

@@ -1,0 +1,103 @@
+{
+  "model_spec": "amazon_bedrock:eu.anthropic.claude-sonnet-5",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJhZGRpdGlvbmFsTW9kZWxSZXF1ZXN0RmllbGRzIjp7Im91dHB1dF9jb25maWciOnsiZWZmb3J0IjoibG93In0sInRoaW5raW5nIjp7ImRpc3BsYXkiOiJzdW1tYXJpemVkIiwidHlwZSI6ImFkYXB0aXZlIn19LCJpbmZlcmVuY2VDb25maWciOnsibWF4VG9rZW5zIjoxMDI0fSwibWVzc2FnZXMiOlt7ImNvbnRlbnQiOlt7InRleHQiOiJXaGF0IGlzIDE3IHRpbWVzIDIzPyBBbnN3ZXIgd2l0aCB0aGUgbnVtYmVyIG9ubHkuIn1dLCJyb2xlIjoidXNlciJ9XX0="
+    },
+    "canonical_json": {
+      "additionalModelRequestFields": {
+        "output_config": {
+          "effort": "low"
+        },
+        "thinking": {
+          "display": "summarized",
+          "type": "adaptive"
+        }
+      },
+      "inferenceConfig": {
+        "maxTokens": 1024
+      },
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "What is 17 times 23? Answer with the number only."
+            }
+          ],
+          "role": "user"
+        }
+      ]
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.eu-west-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.4"
+      ],
+      "x-amz-content-sha256": [
+        "f7adc9e24faaf005d7e6f9b53b6a0adc06c3510cac017f9b3477b05230030d62"
+      ],
+      "x-amz-date": [
+        "20260919T093038Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/model/eu.anthropic.claude-sonnet-5/converse"
+  },
+  "response": {
+    "body": {
+      "metrics": {
+        "latencyMs": 1478
+      },
+      "output": {
+        "message": {
+          "content": [
+            {
+              "text": "391"
+            }
+          ],
+          "role": "assistant"
+        }
+      },
+      "stopReason": "end_turn",
+      "usage": {
+        "cacheReadInputTokenCount": 0,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokenCount": 0,
+        "cacheWriteInputTokens": 0,
+        "inputTokens": 23,
+        "outputTokens": 3,
+        "serverToolUsage": {},
+        "totalTokens": 26
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "315"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Sat, 19 Sep 2026 09:30:40 GMT"
+      ],
+      "x-amzn-requestid": [
+        "64290908-b0e4-4b17-9b7f-8bca25881299"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

@@ -117,9 +117,26 @@ defmodule ReqLLM.ModelHelpers do
   end
 
   defp native_anthropic_adaptive_thinking_required?(model_id) do
+    case native_anthropic_model(model_id) do
+      %LLMDB.Model{} = model -> model_adaptive_thinking_required?(model)
+      nil -> false
+    end
+  end
+
+  @doc """
+  Returns the native Anthropic model a hosted Claude model serves (Bedrock, Vertex,
+  Azure ids), or `nil` when the id matches no Anthropic model.
+  """
+  def hosted_anthropic_model(%LLMDB.Model{} = model) do
+    model
+    |> hosted_anthropic_model_ids()
+    |> Enum.find_value(&native_anthropic_model/1)
+  end
+
+  defp native_anthropic_model(model_id) do
     case LLMDB.model(:anthropic, model_id) do
-      {:ok, %LLMDB.Model{} = model} -> model_adaptive_thinking_required?(model)
-      _ -> false
+      {:ok, %LLMDB.Model{} = model} -> model
+      _ -> nil
     end
   end
 
