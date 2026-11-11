@@ -197,6 +197,12 @@ Passed via `:provider_options` keyword:
 - **Purpose**: [Service tier](https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.html) the request runs on, such as `"flex"` or `"ultrafast"`; omitted when `"default"`
 - **Example**: `provider_options: [service_tier: "flex"]`
 
+### `reasoning_summary`
+
+- **Type**: `"auto"` | `"concise"` | `"detailed"`
+- **Purpose**: Summary of the model's reasoning returned on the Responses API, read with `ReqLLM.Response.thinking/1`
+- **Example**: `provider_options: [endpoint: :mantle, reasoning_summary: "auto"]`
+
 ### `anthropic_structured_output_mode`
 
 - **Type**: `:auto` | `:json_schema`

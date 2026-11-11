@@ -33,4 +33,23 @@ defmodule ReqLLM.Coverage.AmazonBedrock.MantleGpt6Test do
     assert ReqLLM.Response.text(response) =~ ~r/\S/
     assert response.provider_meta["service_tier"] == "ultrafast"
   end
+
+  test "returns a reasoning summary" do
+    opts =
+      fixture_opts(
+        "mantle_reasoning_summary",
+        max_tokens: 2000,
+        reasoning_effort: :high,
+        provider_options: [endpoint: :mantle, region: "us-east-1", reasoning_summary: "detailed"]
+      )
+
+    {:ok, response} =
+      ReqLLM.generate_text(
+        @model,
+        "How many positive integers below 500 are divisible by 3 or 7 but not by 21? Answer with the number only.",
+        opts
+      )
+
+    assert ReqLLM.Response.thinking(response) =~ ~r/\S/
+  end
 end

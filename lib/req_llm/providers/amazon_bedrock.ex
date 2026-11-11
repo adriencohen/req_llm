@@ -256,6 +256,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       model can answer with a tool call and no object.
       """
     ],
+    reasoning_summary: [
+      type: {:or, [:string, {:in, [:auto, :concise, :detailed]}]},
+      doc:
+        "Summary of the model's reasoning returned on the Responses API (auto, concise, detailed)"
+    ],
     service_tier: [
       type: :string,
       default: "default",
