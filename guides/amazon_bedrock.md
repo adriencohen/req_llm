@@ -173,6 +173,12 @@ Passed via `:provider_options` keyword:
 - **Example**: `provider_options: [additional_model_request_fields: %{thinking: %{type: "enabled", budget_tokens: 4096}}]`
 - **Use Case**: Claude extended thinking configuration
 
+### `request_metadata`
+
+- **Type**: Map of string values
+- **Purpose**: [Request metadata](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html#bedrock-runtime_Converse-request-requestMetadata) for filtering invocation logs. Converse only; setting it selects Converse unless `use_converse: false`
+- **Example**: `provider_options: [request_metadata: %{tenant: "acme"}]`
+
 ### `guardrail_identifier`
 
 - **Type**: String

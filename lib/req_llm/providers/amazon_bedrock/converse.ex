@@ -184,7 +184,22 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
     |> add_additional_fields(opts)
     |> add_output_config(opts)
     |> add_guardrail_config(opts)
+    |> add_request_metadata(opts)
     |> PromptCache.apply_converse(PromptCache.resolve(opts), model_id)
+  end
+
+  defp add_request_metadata(request, opts) do
+    case get_in(opts, [:provider_options, :request_metadata]) || opts[:request_metadata] do
+      metadata when is_map(metadata) and map_size(metadata) > 0 ->
+        Map.put(
+          request,
+          "requestMetadata",
+          Map.new(metadata, fn {key, value} -> {to_string(key), value} end)
+        )
+
+      _none ->
+        request
+    end
   end
 
   defp json_schema_output?(opts) do

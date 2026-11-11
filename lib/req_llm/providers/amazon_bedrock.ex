@@ -194,6 +194,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       doc:
         "Additional model-specific request fields (e.g., thinking config for Claude extended thinking)"
     ],
+    request_metadata: [
+      type: {:map, {:or, [:atom, :string]}, :string},
+      doc:
+        "[Request metadata](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html#bedrock-runtime_Converse-request-requestMetadata) key/value pairs for filtering invocation logs. Converse only, so setting it selects Converse unless `use_converse: false`"
+    ],
     guardrail_identifier: [
       type: :string,
       doc: "Bedrock Guardrail id or ARN applied to the request (bedrock-runtime only)"
@@ -1634,6 +1639,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       nil ->
         has_tools = opts[:tools] != nil and opts[:tools] != []
         has_tool_search = is_map(provider_option(opts, :tool_search))
+        has_request_metadata = is_map(provider_option(opts, :request_metadata))
 
         cond do
           requires_converse or is_fallback_to_converse ->
@@ -1643,7 +1649,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
             false
 
           true ->
-            has_tools
+            has_tools or has_request_metadata
         end
     end
   end

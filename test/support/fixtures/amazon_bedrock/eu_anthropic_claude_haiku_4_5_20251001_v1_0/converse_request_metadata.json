@@ -1,0 +1,98 @@
+{
+  "captured_at": "2026-11-11T17:30:22.486575Z",
+  "model_spec": "amazon_bedrock:eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJpbmZlcmVuY2VDb25maWciOnsibWF4VG9rZW5zIjo2NH0sIm1lc3NhZ2VzIjpbeyJjb250ZW50IjpbeyJ0ZXh0IjoiU2F5IGhpIGluIHR3byB3b3Jkcy4ifV0sInJvbGUiOiJ1c2VyIn1dLCJyZXF1ZXN0TWV0YWRhdGEiOnsidGVuYW50IjoiYWNtZSJ9fQ=="
+    },
+    "canonical_json": {
+      "inferenceConfig": {
+        "maxTokens": 64
+      },
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "Say hi in two words."
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "requestMetadata": {
+        "tenant": "acme"
+      }
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.eu-west-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.5"
+      ],
+      "x-amz-content-sha256": [
+        "e0b08fc04a30e8c911c7ea5f4622fd476f19c7c0404b63f726b3130336decc71"
+      ],
+      "x-amz-date": [
+        "20261111T173020Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/model/eu.anthropic.claude-haiku-4-5-20251001-v1:0/converse"
+  },
+  "response": {
+    "body": {
+      "metrics": {
+        "latencyMs": 481
+      },
+      "output": {
+        "message": {
+          "content": [
+            {
+              "text": "Hey there."
+            }
+          ],
+          "role": "assistant"
+        }
+      },
+      "stopReason": "end_turn",
+      "usage": {
+        "cacheReadInputTokenCount": 0,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokenCount": 0,
+        "cacheWriteInputTokens": 0,
+        "inputTokens": 13,
+        "outputTokens": 6,
+        "serverToolUsage": {},
+        "totalTokens": 19
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "321"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Wed, 11 Nov 2026 17:30:22 GMT"
+      ],
+      "x-amzn-requestid": [
+        "dad04ece-dd8d-4f2a-8340-7151a00f5061"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}
