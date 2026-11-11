@@ -191,6 +191,12 @@ Passed via `:provider_options` keyword:
 - **Purpose**: How much guardrail assessment detail Bedrock returns
 - **Example**: `provider_options: [guardrail_identifier: "abc123def456", guardrail_version: "1", guardrail_trace: "enabled"]`
 
+### `guardrail_stream_processing_mode`
+
+- **Type**: `"sync"` | `"async"`
+- **Purpose**: [Guardrail streaming mode](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-streaming.html) on ConverseStream. Setting it selects Converse unless `use_converse: false`
+- **Example**: `provider_options: [guardrail_identifier: "abc123def456", guardrail_version: "1", guardrail_stream_processing_mode: "async"]`
+
 ### `service_tier`
 
 - **Type**: String

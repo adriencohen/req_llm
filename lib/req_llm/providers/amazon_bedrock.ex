@@ -207,6 +207,11 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       type: {:in, ["enabled", "disabled", "enabled_full"]},
       doc: "Guardrail trace detail returned in the response"
     ],
+    guardrail_stream_processing_mode: [
+      type: {:in, ["sync", "async"]},
+      doc:
+        "Whether the guardrail checks streamed output before (`sync`) or while (`async`) it is sent. ConverseStream only, so setting it selects Converse unless `use_converse: false`"
+    ],
     prompt_cache: [
       type: :boolean,
       doc:
@@ -1634,6 +1639,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       nil ->
         has_tools = opts[:tools] != nil and opts[:tools] != []
         has_tool_search = is_map(provider_option(opts, :tool_search))
+        has_stream_mode = provider_option(opts, :guardrail_stream_processing_mode) != nil
 
         cond do
           requires_converse or is_fallback_to_converse ->
@@ -1643,7 +1649,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
             false
 
           true ->
-            has_tools
+            has_tools or has_stream_mode
         end
     end
   end

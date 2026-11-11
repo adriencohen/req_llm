@@ -879,13 +879,16 @@ defmodule ReqLLM.Providers.AmazonBedrock.Converse do
         config = %{"guardrailIdentifier" => identifier, "guardrailVersion" => version}
 
         config =
-          case opts[:guardrail_trace] do
-            nil -> config
-            trace -> Map.put(config, "trace", trace)
-          end
+          config
+          |> put_option("trace", opts[:guardrail_trace])
+          |> put_option("streamProcessingMode", stream_processing_mode(opts))
 
         Map.put(request, "guardrailConfig", config)
     end
+  end
+
+  defp stream_processing_mode(opts) do
+    if opts[:stream], do: opts[:guardrail_stream_processing_mode]
   end
 
   # Assistant message with tool calls (new ToolCall pattern)

@@ -81,5 +81,28 @@ defmodule ReqLLM.Providers.AmazonBedrock.GuardrailsTest do
                "trace" => "enabled_full"
              }
     end
+
+    test "ConverseStream sends the stream processing mode", %{
+      model: model,
+      context: context,
+      opts: opts
+    } do
+      opts =
+        Keyword.update!(
+          opts,
+          :provider_options,
+          &Keyword.put(&1, :guardrail_stream_processing_mode, "async")
+        )
+
+      {:ok, stream_request} = AmazonBedrock.attach_stream(model, context, opts, nil)
+      {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+
+      assert stream_request.path =~ "/converse-stream"
+
+      assert Jason.decode!(stream_request.body)["guardrailConfig"]["streamProcessingMode"] ==
+               "async"
+
+      refute Map.has_key?(Jason.decode!(request.body)["guardrailConfig"], "streamProcessingMode")
+    end
   end
 end
