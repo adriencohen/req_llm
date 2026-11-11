@@ -534,4 +534,45 @@ defmodule ReqLLM.Providers.AmazonBedrock.MantleEndpointTest do
       assert Req.Request.get_header(request, "openai-project") == []
     end
   end
+
+  describe "bedrock-runtime compatible APIs" do
+    setup do
+      opts = [
+        access_key_id: "AKIATEST",
+        secret_access_key: "secretTEST",
+        region: "eu-west-1",
+        provider_options: [runtime_api: :compatible]
+      ]
+
+      {:ok, context: Context.new([Context.user("Hello")]), opts: opts}
+    end
+
+    test "streams each route as server-sent events on bedrock-runtime", %{
+      context: context,
+      opts: opts
+    } do
+      for {id, path} <- [
+            {"openai.gpt-oss-120b-1:0", "/openai/v1/chat/completions"},
+            {"global.openai.gpt-6-luna", "/openai/v1/responses"},
+            {"eu.anthropic.claude-haiku-4-5-20251001-v1:0", "/anthropic/v1/messages"}
+          ] do
+        {:ok, model} = ReqLLM.model(%{provider: :amazon_bedrock, id: id})
+
+        {:ok, request} = AmazonBedrock.prepare_request(:chat, model, context, opts)
+        assert request.url.host == "bedrock-runtime.eu-west-1.amazonaws.com"
+        assert request.url.path == path
+
+        {:ok, stream} = AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+        headers = Map.new(stream.headers)
+
+        assert {stream.host, stream.path} == {"bedrock-runtime.eu-west-1.amazonaws.com", path}
+        assert headers["accept"] == "text/event-stream"
+        assert headers["authorization"] =~ "/bedrock/aws4_request"
+        assert %{"model" => ^id, "stream" => true} = Jason.decode!(stream.body)
+
+        sse = AmazonBedrock.stream_protocol_parser(model, opts)
+        assert {:ok, [%{data: "{}"}], _state} = sse.("data: {}\n\n", nil)
+      end
+    end
+  end
 end

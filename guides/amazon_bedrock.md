@@ -153,6 +153,13 @@ Passed via `:provider_options` keyword:
 - **Default**: `:runtime`
 - **Example**: `provider_options: [endpoint: :mantle]`
 
+### `runtime_api`
+
+- **Type**: `:native` | `:compatible`
+- **Purpose**: `:compatible` sends bedrock-runtime requests to the same Responses, Chat Completions and Messages routes as bedrock-mantle instead of InvokeModel/Converse; see [AWS supported APIs](https://docs.aws.amazon.com/bedrock/latest/userguide/apis.html)
+- **Default**: `:native`
+- **Example**: `provider_options: [runtime_api: :compatible]`
+
 ### `project`
 
 - **Type**: String

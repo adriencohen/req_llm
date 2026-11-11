@@ -1,0 +1,65 @@
+{
+  "captured_at": "2026-11-11T17:54:05.915050Z",
+  "chunks": [
+    {
+      "b64": "ZXZlbnQ6IG1lc3NhZ2Vfc3RhcnQKZGF0YTogeyJ0eXBlIjoibWVzc2FnZV9zdGFydCIsIm1lc3NhZ2UiOnsibW9kZWwiOiJhbnRocm9waWMuY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMS12MTowIiwiaWQiOiJtc2dfYmRya194NjVsN2t5bXh1Z3kzc291cWhxaG12eGRpNmdycHY1Y2h2bGtjZGJvcjI2NTU0c2VsNXhxIiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50IiwiY29udGVudCI6W10sImNvbnRhaW5lciI6bnVsbCwic3RvcF9yZWFzb24iOm51bGwsInN0b3Bfc2VxdWVuY2UiOm51bGwsInN0b3BfZGV0YWlscyI6bnVsbCwidXNhZ2UiOnsiaW5wdXRfdG9rZW5zIjoxMywiY2FjaGVfY3JlYXRpb25faW5wdXRfdG9rZW5zIjowLCJjYWNoZV9yZWFkX2lucHV0X3Rva2VucyI6MCwiY2FjaGVfY3JlYXRpb24iOnsiZXBoZW1lcmFsXzVtX2lucHV0X3Rva2VucyI6MCwiZXBoZW1lcmFsXzFoX2lucHV0X3Rva2VucyI6MH0sIm91dHB1dF90b2tlbnMiOjEsInNlcnZpY2VfdGllciI6InN0YW5kYXJkIn19fQoK"
+    },
+    {
+      "b64": "ZXZlbnQ6IGNvbnRlbnRfYmxvY2tfc3RhcnQKZGF0YTogeyJ0eXBlIjoiY29udGVudF9ibG9ja19zdGFydCIsImluZGV4IjowLCJjb250ZW50X2Jsb2NrIjp7InR5cGUiOiJ0ZXh0IiwidGV4dCI6IiJ9fQoKZXZlbnQ6IGNvbnRlbnRfYmxvY2tfZGVsdGEKZGF0YTogeyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiJIZXkifX0KCg=="
+    },
+    {
+      "b64": "ZXZlbnQ6IGNvbnRlbnRfYmxvY2tfZGVsdGEKZGF0YTogeyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiIgdGhlcmUifX0KCg=="
+    },
+    {
+      "b64": "ZXZlbnQ6IGNvbnRlbnRfYmxvY2tfZGVsdGEKZGF0YTogeyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiIuIn19Cgo="
+    },
+    {
+      "b64": "ZXZlbnQ6IGNvbnRlbnRfYmxvY2tfc3RvcApkYXRhOiB7InR5cGUiOiJjb250ZW50X2Jsb2NrX3N0b3AiLCJpbmRleCI6MH0KCg=="
+    },
+    {
+      "b64": "ZXZlbnQ6IG1lc3NhZ2VfZGVsdGEKZGF0YTogeyJ0eXBlIjoibWVzc2FnZV9kZWx0YSIsImRlbHRhIjp7InN0b3BfcmVhc29uIjoiZW5kX3R1cm4iLCJzdG9wX3NlcXVlbmNlIjpudWxsLCJzdG9wX2RldGFpbHMiOm51bGwsImNvbnRhaW5lciI6bnVsbH0sInVzYWdlIjp7ImlucHV0X3Rva2VucyI6MTMsImNhY2hlX2NyZWF0aW9uX2lucHV0X3Rva2VucyI6MCwiY2FjaGVfcmVhZF9pbnB1dF90b2tlbnMiOjAsIm91dHB1dF90b2tlbnMiOjZ9fQoK"
+    }
+  ],
+  "model_spec": "amazon_bedrock:eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJtYXhfdG9rZW5zIjo0MDAsIm1lc3NhZ2VzIjpbeyJjb250ZW50IjoiU2F5IGhpIGluIHR3byB3b3Jkcy4iLCJyb2xlIjoidXNlciJ9XSwibW9kZWwiOiJldS5hbnRocm9waWMuY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMS12MTowIiwic3RyZWFtIjp0cnVlfQ=="
+    },
+    "canonical_json": {
+      "max_tokens": 400,
+      "messages": [
+        {
+          "content": "Say hi in two words.",
+          "role": "user"
+        }
+      ],
+      "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "stream": true
+    },
+    "headers": {
+      "accept": "text/event-stream",
+      "anthropic-version": "2023-06-01",
+      "authorization": "[REDACTED:authorization]",
+      "content-type": "application/json",
+      "host": "bedrock-runtime.eu-west-1.amazonaws.com",
+      "x-amz-content-sha256": "65add7262f250053920df095dd5d9a5b25db58f6ff0bc57645f7ba5b44051823",
+      "x-amz-date": "20261111T175404Z",
+      "x-amz-security-token": "[REDACTED:x-amz-security-token]"
+    },
+    "method": "POST",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/anthropic/v1/messages"
+  },
+  "response": {
+    "body": null,
+    "headers": {
+      "connection": "keep-alive",
+      "content-type": "text/event-stream",
+      "date": "Wed, 11 Nov 2026 17:54:06 GMT",
+      "transfer-encoding": "chunked",
+      "x-amzn-requestid": "ea8bef3d-2076-46e6-a8d9-0d31adf00fab"
+    },
+    "status": 200
+  },
+  "streaming": true
+}

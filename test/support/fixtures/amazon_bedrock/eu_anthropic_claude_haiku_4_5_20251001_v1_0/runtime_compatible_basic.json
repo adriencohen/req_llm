@@ -1,0 +1,95 @@
+{
+  "captured_at": "2026-11-11T17:54:03.002478Z",
+  "model_spec": "amazon_bedrock:eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJtYXhfdG9rZW5zIjo0MDAsIm1lc3NhZ2VzIjpbeyJjb250ZW50IjoiU2F5IGhpIGluIHR3byB3b3Jkcy4iLCJyb2xlIjoidXNlciJ9XSwibW9kZWwiOiJldS5hbnRocm9waWMuY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMS12MTowIiwic3RyZWFtIjpmYWxzZX0="
+    },
+    "canonical_json": {
+      "max_tokens": 400,
+      "messages": [
+        {
+          "content": "Say hi in two words.",
+          "role": "user"
+        }
+      ],
+      "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "stream": false
+    },
+    "headers": {
+      "anthropic-version": [
+        "2023-06-01"
+      ],
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.eu-west-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.5"
+      ],
+      "x-amz-content-sha256": [
+        "ea560434932798044f0baca4c5c1827281f18127193c97eef5400e7dd6ed84e9"
+      ],
+      "x-amz-date": [
+        "20261111T175401Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/anthropic/v1/messages"
+  },
+  "response": {
+    "body": {
+      "container": null,
+      "content": [
+        {
+          "text": "Hey there!",
+          "type": "text"
+        }
+      ],
+      "id": "msg_bdrk_jr3h764gu7zcg5onivczqnkwhcy2j3jfwcgnid6g2pdw7rx7fygq",
+      "model": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 13,
+        "output_tokens": 6,
+        "service_tier": "standard"
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "499"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Wed, 11 Nov 2026 17:54:03 GMT"
+      ],
+      "x-amzn-requestid": [
+        "7cfac57b-f4a3-4714-a142-e7a500a12aa9"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

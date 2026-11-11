@@ -1,0 +1,92 @@
+{
+  "captured_at": "2026-11-11T17:54:03.596364Z",
+  "model_spec": "amazon_bedrock:openai.gpt-oss-120b-1:0",
+  "provider": "amazon_bedrock",
+  "request": {
+    "body": {
+      "b64": "eyJtYXhfdG9rZW5zIjo0MDAsIm1lc3NhZ2VzIjpbeyJjb250ZW50IjoiU2F5IGhpIGluIHR3byB3b3Jkcy4iLCJyb2xlIjoidXNlciJ9XSwibW9kZWwiOiJvcGVuYWkuZ3B0LW9zcy0xMjBiLTE6MCIsInN0cmVhbSI6ZmFsc2V9"
+    },
+    "canonical_json": {
+      "max_tokens": 400,
+      "messages": [
+        {
+          "content": "Say hi in two words.",
+          "role": "user"
+        }
+      ],
+      "model": "openai.gpt-oss-120b-1:0",
+      "stream": false
+    },
+    "headers": {
+      "authorization": "[REDACTED:authorization]",
+      "content-type": [
+        "application/json"
+      ],
+      "host": [
+        "bedrock-runtime.eu-west-1.amazonaws.com"
+      ],
+      "user-agent": [
+        "req/0.7.5"
+      ],
+      "x-amz-content-sha256": [
+        "dd80b1ff0a8224263823841ce7129b37180314a2de99037ba63f834232579f21"
+      ],
+      "x-amz-date": [
+        "20261111T175403Z"
+      ],
+      "x-amz-security-token": [
+        "[REDACTED:x-amz-security-token]"
+      ]
+    },
+    "method": "post",
+    "url": "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+  },
+  "response": {
+    "body": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "<reasoning>User wants: \"Say hi in two words.\" Probably \"Hello there\". Or \"Hi there\". Two words greeting. So answer: \"Hi there\".</reasoning>Hi there.",
+            "refusal": null,
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1794419643,
+      "id": "chatcmpl-de83f0a0-52b3-4877-930c-83493bfe5b1e",
+      "model": "openai.gpt-oss-120b-1:0",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "usage": {
+        "completion_tokens": 44,
+        "prompt_tokens": 73,
+        "total_tokens": 117
+      }
+    },
+    "headers": {
+      "connection": [
+        "keep-alive"
+      ],
+      "content-length": [
+        "510"
+      ],
+      "content-type": [
+        "application/json"
+      ],
+      "date": [
+        "Wed, 11 Nov 2026 17:54:03 GMT"
+      ],
+      "x-amzn-requestid": [
+        "0fa678f4-e602-4fe3-8cb3-f7f351302953"
+      ],
+      "x-request-id": [
+        "0fa678f4-e602-4fe3-8cb3-f7f351302953"
+      ]
+    },
+    "status": 200
+  },
+  "streaming": false
+}

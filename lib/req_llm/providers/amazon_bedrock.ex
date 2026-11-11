@@ -158,6 +158,12 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       doc:
         "Bedrock endpoint the request goes to: bedrock-runtime (InvokeModel/Converse), or bedrock-mantle (Responses for response-shaped models, Chat Completions for other compatible models, Messages for Claude)"
     ],
+    runtime_api: [
+      type: {:in, [:native, :compatible]},
+      default: :native,
+      doc:
+        "API used on bedrock-runtime: `:native` (InvokeModel/Converse) or `:compatible` (the bedrock-mantle routes: Responses, Chat Completions, Messages for Claude). Ignored on bedrock-mantle"
+    ],
     project: [
       type: :string,
       doc:
@@ -172,7 +178,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       type: :boolean,
       default: false,
       doc:
-        "Store Mantle Responses input and output for later use. Defaults to false. Ignored on other routes"
+        "Store Responses input and output for later use. Defaults to false. Ignored on other routes"
     ],
     use_converse: [
       type: :boolean,
@@ -647,7 +653,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     headers =
       [
         {"Content-Type", "application/json"},
-        {"Accept", stream_accept(endpoint)},
+        {"Accept", stream_accept(translated_opts)},
         {"Host", host}
       ] ++ route_headers(endpoint, model_family, translated_opts)
 
@@ -671,10 +677,9 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
   @impl ReqLLM.Provider
   def stream_protocol_parser(_model, opts) do
-    case endpoint(opts) do
-      :mantle -> &ReqLLM.Provider.parse_stream_protocol/2
-      :runtime -> &parse_stream_protocol/2
-    end
+    if compatible_api?(opts),
+      do: &ReqLLM.Provider.parse_stream_protocol/2,
+      else: &parse_stream_protocol/2
   end
 
   @impl ReqLLM.Provider
@@ -1129,27 +1134,41 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   defp service(:mantle), do: "bedrock-mantle"
   defp service(:runtime), do: "bedrock"
 
-  defp stream_accept(:mantle), do: "text/event-stream"
-  defp stream_accept(:runtime), do: "application/vnd.amazon.eventstream"
+  @doc false
+  def compatible_api?(opts) do
+    endpoint(opts) == :mantle or provider_option(opts, :runtime_api) == :compatible
+  end
+
+  defp stream_accept(opts) do
+    if compatible_api?(opts),
+      do: "text/event-stream",
+      else: "application/vnd.amazon.eventstream"
+  end
 
   defp route(:mantle, model, _use_converse, _stream?, opts) do
-    model_id = request_model_id(model)
+    compatible_route(model, mantle_base_path(request_model_id(model), opts))
+  end
 
+  defp route(:runtime, model, use_converse, stream?, opts) do
+    if compatible_api?(opts),
+      do: compatible_route(model, "/openai/v1"),
+      else: native_route(model, use_converse, stream?, opts)
+  end
+
+  defp compatible_route(model, openai_base_path) do
     case mantle_wire(model) do
       :messages ->
         {"/anthropic/v1/messages", ReqLLM.Providers.AmazonBedrock.Anthropic, "anthropic"}
 
       :responses ->
-        {mantle_base_path(model_id, opts) <> "/responses",
-         ReqLLM.Providers.AmazonBedrock.Responses, "openai"}
+        {openai_base_path <> "/responses", ReqLLM.Providers.AmazonBedrock.Responses, "openai"}
 
       :chat_completions ->
-        {mantle_base_path(model_id, opts) <> "/chat/completions",
-         ReqLLM.Providers.AmazonBedrock.OpenAI, "openai"}
+        {openai_base_path <> "/chat/completions", ReqLLM.Providers.AmazonBedrock.OpenAI, "openai"}
     end
   end
 
-  defp route(:runtime, model, true = _use_converse, stream?, opts) do
+  defp native_route(model, true = _use_converse, stream?, opts) do
     model_id = request_model_id(model)
     path_id = path_model_id(model_id, opts)
 
@@ -1171,7 +1190,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     {path, formatter, :converse}
   end
 
-  defp route(:runtime, model, false = _use_converse, stream?, opts) do
+  defp native_route(model, false = _use_converse, stream?, opts) do
     model_id = request_model_id(model)
     path_id = path_model_id(model_id, opts)
 
@@ -1254,8 +1273,16 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   defp route_headers(:mantle, _chat_completions, opts),
     do: project_header("openai-project", opts)
 
-  defp route_headers(:runtime, :converse, _opts), do: []
-  defp route_headers(:runtime, _model_family, opts), do: guardrail_headers(opts)
+  defp route_headers(:runtime, model_family, opts) do
+    cond do
+      not compatible_api?(opts) -> native_headers(model_family, opts)
+      model_family == "anthropic" -> ReqLLM.Providers.AmazonBedrock.Anthropic.mantle_headers(opts)
+      true -> []
+    end
+  end
+
+  defp native_headers(:converse, _opts), do: []
+  defp native_headers(_model_family, opts), do: guardrail_headers(opts)
 
   defp put_service_tier(body, _model_family, tier) when tier in [nil, "default"], do: body
 
@@ -1364,7 +1391,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
         {translated_opts, warnings}
 
-      endpoint(opts) == :mantle and mantle_responses_model?(model) ->
+      compatible_api?(opts) and mantle_responses_model?(model) ->
         ReqLLM.Providers.OpenAI.translate_options(operation, as_openai_model(model), opts)
 
       true ->
@@ -1607,7 +1634,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
   # Private helper: Determine whether to use Converse API
   defp determine_use_converse(model_id, opts) do
-    endpoint(opts) == :runtime and runtime_use_converse?(model_id, opts)
+    not compatible_api?(opts) and runtime_use_converse?(model_id, opts)
   end
 
   defp runtime_use_converse?(model_id, opts) do

@@ -47,16 +47,14 @@ defmodule ReqLLM.Providers.AmazonBedrock.Anthropic do
   def format_request(model_id, context, opts) do
     body = messages_body(context, opts)
 
-    case get_in(opts, [:provider_options, :endpoint]) do
-      :mantle ->
-        body
-        |> Map.put(:model, model_id)
-        |> AdapterHelpers.maybe_add_param(:stream, opts[:stream])
-
-      _runtime ->
-        body
-        |> Map.put(:anthropic_version, "bedrock-2023-05-31")
-        |> maybe_add_anthropic_beta(opts)
+    if ReqLLM.Providers.AmazonBedrock.compatible_api?(opts) do
+      body
+      |> Map.put(:model, model_id)
+      |> AdapterHelpers.maybe_add_param(:stream, opts[:stream])
+    else
+      body
+      |> Map.put(:anthropic_version, "bedrock-2023-05-31")
+      |> maybe_add_anthropic_beta(opts)
     end
   end
 
