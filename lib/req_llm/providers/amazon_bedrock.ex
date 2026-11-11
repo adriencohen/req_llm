@@ -430,7 +430,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
     region = extract_region(aws_creds)
     endpoint = endpoint(opts)
-    base_url = "https://#{host(endpoint, region)}"
+    base_url = base_url(model, user_opts, endpoint, region)
 
     # Use provider_model_id if set (for models requiring specific API format like inference profiles),
     # otherwise fall back to canonical model ID.
@@ -538,7 +538,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
       end
 
     region = extract_region(aws_creds)
-    base_url = "https://#{host(:runtime, region)}"
+    base_url = base_url(model, user_opts, :runtime, region)
     model_id = model.provider_model_id || model.id
     path_id = path_model_id(model_id, processed_opts)
     {model_family, formatter} = get_embedding_formatter(model_id)
@@ -640,8 +640,9 @@ defmodule ReqLLM.Providers.AmazonBedrock do
 
     # Construct streaming URL
     region = aws_creds.region || "us-east-1"
-    host = host(endpoint, region)
-    url = "https://#{host}#{path}"
+    base_url = base_url(model, opts, endpoint, region)
+    host = URI.parse(base_url).authority
+    url = base_url <> path
 
     # Create base headers for AWS signature
     headers =
@@ -655,7 +656,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     finch_request = Finch.build(:post, url, headers, json_body)
 
     # Add AWS Signature V4
-    signed_request = sign_aws_request(finch_request, aws_creds, host, endpoint, model_family)
+    signed_request = sign_aws_request(finch_request, aws_creds, base_url, endpoint, model_family)
 
     {:ok, signed_request}
   rescue
@@ -1072,7 +1073,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     end
   end
 
-  defp sign_aws_request(finch_request, %{api_key: api_key}, _host, endpoint, model_family)
+  defp sign_aws_request(finch_request, %{api_key: api_key}, _base_url, endpoint, model_family)
        when is_binary(api_key) do
     normalized_headers =
       Enum.map(finch_request.headers, fn {k, v} -> {String.downcase(k), v} end)
@@ -1081,7 +1082,7 @@ defmodule ReqLLM.Providers.AmazonBedrock do
     %{finch_request | headers: headers}
   end
 
-  defp sign_aws_request(finch_request, aws_creds, host, endpoint, _model_family) do
+  defp sign_aws_request(finch_request, aws_creds, base_url, endpoint, _model_family) do
     service = service(endpoint)
 
     if AWSAuthAdapter.credentials?(aws_creds) do
@@ -1099,7 +1100,8 @@ defmodule ReqLLM.Providers.AmazonBedrock do
           binary when is_binary(binary) -> binary
         end
 
-      url = "https://#{host}#{path}"
+      %URI{scheme: scheme, authority: authority} = URI.parse(base_url)
+      url = "#{scheme}://#{authority}#{path}"
       url = if query && query != "", do: "#{url}?#{query}", else: url
       headers_map = Map.new(headers, fn {k, v} -> {String.downcase(k), v} end)
 
@@ -1122,6 +1124,13 @@ defmodule ReqLLM.Providers.AmazonBedrock do
   defp provider_option(opts, key), do: get_in(opts, [:provider_options, key]) || opts[key]
 
   defp endpoint(opts), do: provider_option(opts, :endpoint) || :runtime
+
+  defp base_url(model, opts, endpoint, region) do
+    case opts[:base_url] || model.base_url do
+      nil -> "https://#{host(endpoint, region)}"
+      base_url -> base_url |> String.replace("{region}", region) |> String.trim_trailing("/")
+    end
+  end
 
   defp host(:mantle, region), do: "bedrock-mantle.#{region}.api.aws"
   defp host(:runtime, region), do: "bedrock-runtime.#{region}.amazonaws.com"

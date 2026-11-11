@@ -153,6 +153,8 @@ Passed via `:provider_options` keyword:
 - **Default**: `:runtime`
 - **Example**: `provider_options: [endpoint: :mantle]`
 
+A top-level `base_url` replaces the endpoint host, for example a VPC or FIPS endpoint: `base_url: "https://bedrock-runtime-fips.us-east-1.amazonaws.com"`. `{region}` in it is replaced by the request region.
+
 ### `project`
 
 - **Type**: String

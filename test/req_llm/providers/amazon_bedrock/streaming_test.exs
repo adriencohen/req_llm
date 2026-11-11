@@ -407,6 +407,19 @@ defmodule ReqLLM.Providers.AmazonBedrock.StreamingTest do
       assert finch_request.host =~ "eu-west-1"
     end
 
+    test "streams to a custom base_url", %{model: model, context: context, opts: opts} do
+      opts = Keyword.put(opts, :base_url, "http://localhost:4566/bedrock/")
+
+      assert {:ok, finch_request} =
+               AmazonBedrock.attach_stream(model, context, opts, ReqLLM.Finch)
+
+      assert {finch_request.scheme, finch_request.host, finch_request.port} ==
+               {:http, "localhost", 4566}
+
+      assert finch_request.path =~ ~r{^/bedrock/model/}
+      assert {"host", "localhost:4566"} in finch_request.headers
+    end
+
     test "includes session token in signed request", %{model: model, context: context, opts: opts} do
       session_token = "FwoGZXIvYXdzEBYaDHhBTEMPLESessionToken123"
       opts_with_token = Keyword.put(opts, :session_token, session_token)
